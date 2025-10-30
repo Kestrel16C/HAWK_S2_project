@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.mpy
+out/
+build/
+dist/
+docs-offline.zip
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
