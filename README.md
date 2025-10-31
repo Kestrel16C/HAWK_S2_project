@@ -52,7 +52,6 @@ Die aktuelle Firmware ist unter Releases erhältlich:
 - `hipe.py` – Einstiegspunkt (änderbar).
 - `modules/` – offene Module (änderbar).
 - `www/` – Weboberfläche (HTML/JS/CSS).
-- `tools/flash_nuke.uf2` – optionales Zurücksetzen des Speichers.
 
 > **Hinweis:** `secure/*` ist in der Firmware integriert und nicht veränderbar.
 
