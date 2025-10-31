@@ -1,7 +1,7 @@
 # Build-Info
 
-- **Commit:** db260bf4b6906e9bf3d7fe759f5402308bd644b9 (db260bf4)
+- **Commit:** eb3d5fcc40ade32e9ae10ade67faec23fd49b6b6 (eb3d5fcc)
 - **Branch:** main
-- **Pipeline:** 1672
-- **Buildzeit (UTC):** 2025-10-31T10:58:40Z
+- **Pipeline:** 1673
+- **Buildzeit (UTC):** 2025-10-31T11:12:21Z
 - **MicroPython:** v1.25.0

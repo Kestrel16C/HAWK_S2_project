@@ -3,8 +3,8 @@
 
 """PWM-Servosteuerung für ein Lenkservo.
 
-Dieses Modul stellt die Klasse `Steering` bereit, um ein RC-Lenkservo über PWM
-anzusteuern. Pulsbreiten (µs) sind kalibrierbar, eine Hysterese unterdrückt
+Dieses Modul stellt die Klasse `Steering` bereit, um ein RC-Lenkservo über PWM anzusteuern.
+Pulsbreiten (µs) sind kalibrierbar, eine Hysterese unterdrückt
 Jitter, und die Eingabe kann wahlweise in Prozent oder Grad erfolgen.
 
 Examples:
