@@ -6,12 +6,38 @@ pages:
     - if: '$PAGES_ENABLE == "1"'
       when: on_success
     - when: never
-  image: alpine:3.20
+
   before_script:
-    - apk add --no-cache rsync
-  script:
+    - set -euo pipefail
     - mkdir -p public
-    - rsync -a --delete docs/ public/
+    - |
+      if [ ! -d docs ]; then
+        echo \"Ordner docs/ fehlt – nichts zu veröffentlichen.\" >&2
+        exit 1
+      fi
+    - |
+      if command -v rsync >/dev/null 2>&1; then
+        echo \"rsync gefunden – verwende rsync.\"
+        RSYNC_OK=1
+      else
+        echo \"rsync nicht gefunden – verwende tar-Fallback.\"
+        RSYNC_OK=0
+      fi
+
+  script:
+    - |
+      if [ \"${RSYNC_OK}\" -eq 1 ]; then
+        rsync -a --delete docs/ public/
+      else
+        tar -C docs -cf - . | tar -C public -xpf -
+        find public -type f | while read -r f; do
+          rel=\"${f#public/}\"
+          [ -e \"docs/${rel}\" ] || rm -f \"$f\"
+        done
+        find public -type d -empty -delete || true
+      fi
+
   artifacts:
-    paths: [public]
+    paths:
+      - public
     expire_in: 14 days
