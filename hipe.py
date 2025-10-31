@@ -30,8 +30,7 @@
 
 Startet die Teilmodule (Antrieb, Lenkung, Strommessung, Sicherheit, Netzwerk,
 Webserver) und betreibt eine **nicht-blockierende** Hauptschleife. Die
-Weboberfläche liefert Sollwerte (Speed/Steer) und Heartbeats; die
-``SafetyManager``-Logik begrenzt und schützt den Antrieb.
+Weboberfläche liefert Sollwerte (Speed/Steer) und Heartbeats; die ``SafetyManager``-Logik begrenzt und schützt den Antrieb.
 
 Examples:
 
