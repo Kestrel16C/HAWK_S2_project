@@ -4,8 +4,8 @@ Willkommen! Dieses Repository enthält die benötigten Artefakte, um das Fahrzeu
 
 ---
 
-Die aktuelle Firmware ist unter Releases erhältlich.
-
+Die aktuelle Firmware ist unter Releases erhältlich:
+[Download Firmware](https://git.i.hawk.de/informatik/projektjunior/-/releases/permalink/latest)
 
 ---
 
