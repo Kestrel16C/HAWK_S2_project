@@ -1,7 +1,7 @@
 # Build-Info
 
-- **Commit:** fe41e2e975d58e1d3449150220816e98b570d67a (fe41e2e9)
+- **Commit:** 65960015074636d0720d9a62e1b3ef2c6faae03b (65960015)
 - **Branch:** main
-- **Pipeline:** 1704
-- **Buildzeit (UTC):** 2025-11-06T10:26:06Z
+- **Pipeline:** 1707
+- **Buildzeit (UTC):** 2025-11-10T13:55:13Z
 - **MicroPython:** v1.25.0
