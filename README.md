@@ -143,8 +143,7 @@ Die Firmware-Images (Releases) enthalten:
 - Offene Module & Web-UI (MIT)  
 - Optional: flash_nuke.uf2 (MIT)
 
-Alle Bestandteile sind MIT-kompatibel.  
-Die resultierende Firmware ist ebenfalls insgesamt MIT-lizenziert.
+Alle Bestandteile sind MIT-kompatibel. Die resultierende Firmware ist ebenfalls insgesamt MIT-lizenziert.
 
 ---
 
