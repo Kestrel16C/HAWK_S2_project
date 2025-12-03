@@ -95,7 +95,56 @@ Pipeline-Status:
 
 ## Lizenz
 
-Dieses Projekt ist ausschließlich für den internen Gebrauch in der Lehre vorgesehen. Weitergabe oder Nutzung außerhalb der HAWK bedarf der Zustimmung.
+Dieses Projekt (HIPE – HAWK Ingenieurwissenschaften Projekt Erstsemester) wird unter der **MIT License** veröffentlicht.
+
+MIT License
+
+Copyright (c) 2025
+Tobias Bürmann, HAWK – Hochschule für angewandte Wissenschaft und Kunst
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+### Drittanbieter-Lizenzen (MIT)
+
+Dieses Projekt enthält Komponenten, die auf externer MIT-lizenzierter Software basieren:
+
+- **MicroPython (MIT License)**  
+  Lizenztext unter:  
+  `THIRD_PARTY/micropython_LICENSE.txt`
+
+- **TM1637 MicroPython-Treiber (MIT License)**  
+  Basierend auf: https://github.com/mcauser/micropython-tm1637  
+  Lizenztext unter:  
+  `THIRD_PARTY/tm1637_LICENSE.txt`
+
+Alle Erweiterungen und Änderungen wurden von **Tobias Bürmann (HAWK)** vorgenommen.
+
+### Firmware & Secure-Module
+
+Die Firmware-Images (Releases) enthalten:
+- MicroPython (MIT)  
+- Secure-Module (MIT)  
+- Offene Module & Web-UI (MIT)  
+- Optional: flash_nuke.uf2 (MIT)
+
+Alle Bestandteile sind MIT-kompatibel.  
+Die resultierende Firmware ist ebenfalls insgesamt MIT-lizenziert.
 
 ---
 
