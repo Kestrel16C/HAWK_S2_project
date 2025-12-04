@@ -183,7 +183,7 @@ class hipe:
         # ---------------------------------------------------------------------
         # 1) WLAN-Access-Point
         try:
-            ap_ip = self.net.start_ap(self.wifi_password, channel=None)  # Auto-Kanal
+            ap_ip = self.net.start_ap(password=self.wifi_password, channel=None)  # Auto-Kanal
             print("SSID =", getattr(self.net, "ap_ssid", "<unknown>"))
             print("AP aktiv: IP =", ap_ip)
             self.led.set_pattern("fast")
