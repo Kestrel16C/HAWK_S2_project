@@ -105,19 +105,20 @@ class hipe:
     # -------------------------------------------------------------------------
     # INITIALISIERUNG
     # -------------------------------------------------------------------------
-    def __init__(self, wifi_password: str, loop_hz=100) -> None:
+    def __init__(self, wifi_password: str) -> None:
         """Erzeugt eine Instanz, konfiguriert Hardware und startet AP + HTTP-Server.
 
         Args:
             wifi_password (str): Passwort für den WLAN-Access-Point (muss gesetzt werden).
-            loop_hz (int): Takt der Hauptschleife (z. B. 100 ⇒ ~10 ms/Tick).
-
 
         Returns:
             None
         """
+
+
         # --- Zeit/Loop-Parameter ---------------------------------------------
-        self.dt_ms = max(1, int(1000 // max(1, int(loop_hz))))
+        self.loop_hz = 100 # Takt der Hauptschleife (z. B. 100 ⇒ ~10 ms/Tick).
+        self.dt_ms = max(1, int(1000 // max(1, int(self.loop_hz))))
         self._last_adc = 0
         self._cur_cache = None
         self.HEARTBEAT_TIMEOUT_MS = 800
