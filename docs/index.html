@@ -877,16 +877,14 @@ Studierenden-Code bindet sich über klar definierte Hooks/Methoden ein
 <li>Jetzt erscheint der Pico als USB-Laufwerk namens RPI-RP2 oder RPI-RP2350.</li>
 <li>Die .uf2-Datei aus dem /firmware - Verzeichnis des Repos auf das RPI-Laufwerk kopieren.</li>
 <li>Nach dem Kopiervorgang startet der Pico 2 W neu.</li>
-<li>
-<p><strong>Serielle REPL</strong> öffnen und starten:</p>
+<li><strong>Serielle REPL</strong> öffnen und starten:</li>
+</ol>
 <p><code>python
         from hipe import hipe
-        h = hipe()
+        h = hipe("Hier WLAN-Passwort angeben")
         h.run()  # startet AP + Webserver + Hauptschleife</code></p>
-</li>
-<li>
-<p><strong>Verbinden</strong> mit dem WLAN-AP (SSID wird im REPL angezeigt, Standard-PW „12345678“).</p>
-</li>
+<ol>
+<li><strong>Verbinden</strong> mit dem WLAN-AP (SSID wird im REPL angezeigt, Standard-PW „12345678“).</li>
 <li><strong>Web-UI öffnen</strong> (IP steht im REPL, im Normalfall <code>192.168.4.1</code>).</li>
 </ol>
 <h2 id="steuerung-telemetrie">Steuerung &amp; Telemetrie</h2>
@@ -951,7 +949,7 @@ docs/                   # Dokuquellen (diese Seite,...)
     <span class="md-icon" title="Letztes Update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-datetime" title="1. November 2025 18:30:38 CET">1. November 2025 18:30:38</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-datetime" title="4. Dezember 2025 09:33:03 CET">4. Dezember 2025 09:33:03</span>
   </span>
 
     
