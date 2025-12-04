@@ -1,5 +1,26 @@
 # hipe.py
-# created by Tobias Bürmann, HAWK
+# MIT License
+# Copyright (c) 2025
+# Tobias Bürmann, HAWK – Hochschule für angewandte Wissenschaft und Kunst
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
 # -----------------------------------------------------------------------------
 # HAUPT-ORCHESTRATOR
 # -----------------------------------------------------------------------------
@@ -19,7 +40,7 @@
 #
 # Start aus der REPL:
 #   >>> from hipe import hipe
-#   >>> h = hipe()
+#   >>> h = hipe("Hier WLAN-Passwort angeben")
 #   >>> h.run()
 #
 # Beenden:
@@ -35,7 +56,7 @@ Weboberfläche liefert Sollwerte (Speed/Steer) und Heartbeats; die ``SafetyManag
 Examples:
 
     from hipe import hipe
-    h = hipe()
+    h = hipe("Hier WLAN-Passwort angeben")
     h.run()
 """
 
@@ -84,13 +105,13 @@ class hipe:
     # -------------------------------------------------------------------------
     # INITIALISIERUNG
     # -------------------------------------------------------------------------
-    def __init__(self, loop_hz=100, web_root="/www", port=80) -> None:
+    def __init__(self, wifi_password: str, loop_hz=100) -> None:
         """Erzeugt eine Instanz, konfiguriert Hardware und startet AP + HTTP-Server.
 
         Args:
+            wifi_password (str): Passwort für den WLAN-Access-Point (muss gesetzt werden).
             loop_hz (int): Takt der Hauptschleife (z. B. 100 ⇒ ~10 ms/Tick).
-            web_root (str): Verzeichnis mit Web-Dateien (HTML/CSS/JS).
-            port (int): Port des Webservers (Standard: ``80``).
+
 
         Returns:
             None
@@ -109,9 +130,11 @@ class hipe:
 
         # --- LED, Netzwerk, Webserver-Basis ----------------------------------
         self.led = LedBlinker()
-        self.web_root = web_root
-        self.port = port
+        self.web_root = "/www"
+        self.port = 80
         self.net = NetworkManager(country="DE")
+        self.wifi_password = wifi_password
+
 
         # ---------------------------------------------------------------------
         # HARDWARE: ANTRIEB (MOTOR + ENCODER)
@@ -160,7 +183,7 @@ class hipe:
         # ---------------------------------------------------------------------
         # 1) WLAN-Access-Point
         try:
-            ap_ip = self.net.start_ap(password="12345678", channel=None)  # Auto-Kanal
+            ap_ip = self.net.start_ap(self.wifi_password, channel=None)  # Auto-Kanal
             print("SSID =", getattr(self.net, "ap_ssid", "<unknown>"))
             print("AP aktiv: IP =", ap_ip)
             self.led.set_pattern("fast")
@@ -171,8 +194,8 @@ class hipe:
         # 2) HTTP-Server (nicht-blockierend, wird in der Loop gepollt)
         try:
             self.web = WebServer(
-                port=port,
-                web_root=web_root,
+                port=self.port,
+                web_root=self.web_root,
                 on_control=self.on_control,
                 get_telemetry=self.get_telemetry,
                 on_heartbeat=self.on_heartbeat,

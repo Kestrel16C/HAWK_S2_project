@@ -30,14 +30,16 @@ Die aktuelle Firmware ist unter Releases erhältlich:
    - **Manuell (REPL):**
      ```python
      from hipe import hipe
-     hipe(loop_hz=100, web_root="/www", port=80).run()
+     h = hipe("Hier WLAN-Passwort angeben")
+     h.run()
      ```
    - **Autostart (optional):** auf dem Pico eine `main.py` anlegen:
      ```python
      from hipe import hipe
 
      if __name__ == "__main__":
-         hipe(loop_hz=100, web_root="/www", port=80).run()
+        h = hipe("Hier WLAN-Passwort angeben")
+        h.run()
      ```
 
 4. **Web-UI aufrufen**
