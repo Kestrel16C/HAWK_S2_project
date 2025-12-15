@@ -1155,7 +1155,7 @@ High-Sides sind nie gleichzeitig aktiv. Die Rampe begrenzt die
   <ul>
 <li>Pins/Frequenzen/Rampe sind in dieser Implementierung <strong>hart kodiert</strong>
   (PWM: L=GPIO10, R=GPIO12; High-Side: L=GPIO9, R=GPIO11; Encoder: A=GPIO0, B=GPIO1;
-  PWM-Frequenz 20 kHz; Rampe ca. 300 %/s). Passe das bei Bedarf im Code an.</li>
+  PWM-Frequenz 20 kHz; Rampe ca. 300 %/s).</li>
 <li>PIO-Encoder wird bevorzugt; Fallback auf Python-IRQ (A-rising).</li>
 <li><code>get_rpm()</code> liefert <strong>Rad-Drehzahl</strong>, <code>get_rpm_motor()</code> die
   abgeleitete <strong>Motor-Drehzahl</strong>.</li>
