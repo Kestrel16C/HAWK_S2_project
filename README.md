@@ -74,6 +74,7 @@ Die aktuelle Firmware ist unter Releases erhältlich:
 - **Projektdokumentation:** https://pages.i.hawk.de/informatik/projektjunior/
 - **Stud.IP-Veranstaltung:**
   https://studip.hawk.de/dispatch.php/course/details?sem_id=5751ae910432d8bf2f69fc498e4b9ade&again=yes
+- **MicroPython-Doku:** https://docs.micropython.org/en/latest/
 
 ---
 
