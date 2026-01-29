@@ -159,40 +159,22 @@ class NetworkManager:
     # ---------------- interne Hilfen ----------------
 
     @staticmethod
-    def _pick_best_channel() -> int:
-        """Wählt einen sinnvollen 2.4-GHz-Kanal aus {1, 6, 11} via kurzer Scan-Heuristik.
+    def _pick_best_channel(uid: str) -> int:
+        """Deterministische Kanalwahl für viele APs: verteilt über mehrere Kanäle.
 
-        Returns:
-            int: Gewählter Kanal (Fallback: 1).
+        Nutzt eine UID-basierte Verteilung auf [1,3,5,7,9,11,13], um Co-Channel-
+        Interference zu reduzieren, wenn viele Pico-APs gleichzeitig laufen.
         """
-        if network is None:
-            return 1
-
-        cands = [1, 6, 11]
-        sta = network.WLAN(network.STA_IF)
+        cands = [1, 3, 5, 7, 9, 11, 13]
         try:
-            sta.active(True)
-            time.sleep_ms(150)  # einige Stacks liefern sonst leere Scans
-            base = {ch: 0 for ch in range(1, 14)}
-            scans = sta.scan() or []
-            for _ssid, _bssid, ch, _rssi, _auth, _hidden in scans:
-                if 1 <= ch <= 13:
-                    base[ch] += 1
-
-            def cost(ch):
-                # Überlappende Nachbarn ±1/±2 leicht mitbewerten
-                neigh = (ch-2, ch-1, ch, ch+1, ch+2)
-                return sum(base.get(k, 0) for k in neigh)
-
-            choice = min(cands, key=lambda c: (cost(c), c))
-            return choice
-        except (OSError, RuntimeError, ValueError, AttributeError):
-            return 1
-        finally:
+            x = int(uid[-2:], 16)  # letzte 2 Hex-Zeichen → 0..255
+        except Exception:
+            # Fallback falls UID-Format unerwartet ist
             try:
-                sta.active(False)
-            except (OSError, AttributeError, RuntimeError):
-                pass
+                x = time.ticks_cpu() & 0xFF
+            except Exception:
+                x = 0
+        return cands[x % len(cands)]
 
     # ---------------- Access Point ----------------
 
@@ -235,7 +217,7 @@ class NetworkManager:
         # Auto-Channel?
         if channel is None:
             try:
-                channel = self._pick_best_channel()
+                channel = self._pick_best_channel(self.uid)
             except (OSError, RuntimeError, ValueError, AttributeError):
                 channel = 1
 
@@ -283,6 +265,7 @@ class NetworkManager:
         # Aktivieren
         try:
             self.ap.active(True)
+            time.sleep_ms(200)
         except (OSError, RuntimeError, ValueError, AttributeError) as e:
             print("start_ap failed:", e)
             raise

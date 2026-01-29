@@ -1365,7 +1365,7 @@ STA = Pico verbindet sich mit vorhandenem WLAN.</p>
 
 
 <h4 id="modules.net.NetworkManager._pick_best_channel" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">_pick_best_channel</span><span class="p">()</span></code>
+            <code class="highlight language-python"><span class="n">_pick_best_channel</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span></code>
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-staticmethod"><code>staticmethod</code></small>
@@ -1376,30 +1376,9 @@ STA = Pico verbindet sich mit vorhandenem WLAN.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Wählt einen sinnvollen 2.4-GHz-Kanal aus {1, 6, 11} via kurzer Scan-Heuristik.</p>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-<th>Name</th>          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-<td><code>int</code></td>            <td>
-                  <code><span title="int">int</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Gewählter Kanal (Fallback: 1).</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
+        <p>Deterministische Kanalwahl für viele APs: verteilt über mehrere Kanäle.</p>
+<p>Nutzt eine UID-basierte Verteilung auf [1,3,5,7,9,11,13], um Co-Channel-
+Interference zu reduzieren, wenn viele Pico-APs gleichzeitig laufen.</p>
 
 
     </div>
