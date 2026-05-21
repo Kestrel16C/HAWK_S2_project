@@ -112,6 +112,7 @@ class WebServer:
                  on_heartbeat=None,
                  on_set_steer=None,
                  on_set_speed=None,
+                 on_aux=None,
                  steering=None,
                  current=None,
                  safety=None):
@@ -131,6 +132,7 @@ class WebServer:
         self.on_heartbeat   = on_heartbeat   or (lambda: None)
         self.on_set_steer   = on_set_steer   or (lambda v: None)
         self.on_set_speed   = on_set_speed   or (lambda v: None)
+        self.on_aux = on_aux or (lambda t, d: None)
 
         # Direkte Subsysteme (optional)
         self.safety   = safety
@@ -251,6 +253,9 @@ class WebServer:
 
             if path == "/speed":
                 return self._handle_speed(client, qs)
+
+            if path == "/aux":
+                return self._handle_aux(client, qs)
 
             # ---- Statische Dateien ----
             return self._serve_static(client, path)
@@ -472,6 +477,27 @@ class WebServer:
             return self._send_text(client, "OK")
         except (TypeError, ValueError):
             return self._send_response(client, 400, "text/plain", b"Bad params")
+
+    def _handle_aux(self, client, qs) -> None:
+        """Verarbeitet Zusatzbefehle für Setup und Erweiterungen.
+
+        Endpunkt:
+            ``/aux?type=&data=``
+
+        Returns:
+            None
+        """
+        p = self._parse_qs(qs)
+        # Parameter extrahieren
+        cmd_type = p.get("type", "")
+        cmd_data = p.get("data", "")
+
+        # Callback aufrufen
+        self.on_aux(cmd_type, cmd_data)
+
+        # Einfaches OK zurücksenden
+        self._send_text(client, "OK")
+        return None
 
     # -------------------------------------------------------------------------
     # Statische Dateien

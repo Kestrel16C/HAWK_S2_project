@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <title>Fahrzeugsteuerung</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --muted:#94a3b8;
+      --text:#e5e7eb;
+      --accent:#38bdf8;
+      --accent2:#34d399;
+      --warn:#f59e0b;
+      --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+    .wrap{max-width:920px;margin:20px auto;padding:16px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:20px;margin:0;letter-spacing:.3px}
+    .chip{font-size:12px;color:var(--bg);background:var(--accent);padding:4px 8px;border-radius:999px}
+
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media (min-width: 780px){ .grid{grid-template-columns:1.1fr .9fr} }
+
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px}
+    .section-title{font-size:13px;color:var(--muted);margin:0 0 10px 0;letter-spacing:.2px}
+
+    .row{display:flex;align-items:center;gap:12px}
+    .row.space{justify-content:space-between}
+
+    /* Slider */
+    .ctrl{margin:10px 0 18px 0}
+    .label{font-size:13px;color:var(--muted)}
+    .value{font-variant-numeric:tabular-nums;font-weight:700;min-width:54px;text-align:right}
+
+    input[type="range"]{
+      -webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:999px;
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      outline:none;opacity:.95;transition:opacity .15s;
+    }
+    input[type="range"]::-webkit-slider-thumb{
+      -webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;
+      background:#fff;border:3px solid var(--panel);box-shadow:0 0 0 3px rgba(56,189,248,.5);
+      cursor:pointer;transition:transform .12s;
+    }
+    input[type="range"]::-moz-range-thumb{
+      width:22px;height:22px;border:none;border-radius:50%;
+      background:#fff;box-shadow:0 0 0 3px rgba(56,189,248,.5);cursor:pointer;
+    }
+    .scale{
+      display:flex;justify-content:space-between;margin-top:6px;color:var(--muted);font-size:11px
+    }
+
+    .btn{
+      appearance:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);
+      color:var(--text);padding:8px 12px;border-radius:10px;font-weight:600;cursor:pointer;
+      transition:filter .15s,transform .02s;
+    }
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(180deg,rgba(56,189,248,.25),rgba(56,189,248,.15));border-color:rgba(56,189,248,.5)}
+    .btn.warn{background:linear-gradient(180deg,rgba(245,158,11,.25),rgba(245,158,11,.14));border-color:rgba(245,158,11,.5)}
+    .btn.danger{background:linear-gradient(180deg,rgba(239,68,68,.25),rgba(239,68,68,.14));border-color:rgba(239,68,68,.5)}
+    .btn.block{width:100%}
+
+    /* Telemetrie */
+    .tele{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .kv{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px}
+    .k{font-size:11px;color:var(--muted)}
+    .v{font-size:16px;font-weight:700;margin-top:4px}
+    .list{margin-top:10px;font-size:13px;color:var(--muted)}
+    .ok{color:var(--accent2)} .bad{color:var(--danger)} .mid{color:var(--warn)}
+
+    /* Blink-Animation für DEAD */
+    @keyframes blinkPulse {
+      from { opacity: .35; transform: scale(1.00); }
+      to   { opacity: 1;    transform: scale(1.03); }
+    }
+    .blink { animation: blinkPulse .8s ease-in-out infinite alternate; }
+
+    footer{margin-top:18px;text-align:center;color:var(--muted);font-size:11px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Fahrzeugsteuerung</h1>
+      <div class="chip" id="netChip">verbunden</div>
+    </header>
+
+    <div class="grid">
+      <!-- CONTROLS -->
+      <section class="card">
+        <p class="section-title">Steuerung</p>
+
+        <!-- Speed -->
+        <div class="ctrl">
+          <div class="row space">
+            <div class="label">Geschwindigkeit</div>
+            <div class="value"><span id="speedVal">0</span></div>
+          </div>
+          <input id="speed" type="range" min="-100" max="100" step="1" value="0" />
+          <div class="scale"><span>-100</span><span>0</span><span>+100</span></div>
+          <div class="row" style="gap:8px;margin-top:10px">
+            <button class="btn warn" id="btnStop">Stop (0)</button>
+            <button class="btn" id="btnSlow">-25</button>
+            <button class="btn" id="btnFast">+25</button>
+          </div>
+        </div>
+
+        <!-- Steering -->
+        <div class="ctrl">
+          <div class="row space">
+            <div class="label">Lenkung</div>
+            <div class="value"><span id="steerVal">0</span></div>
+          </div>
+          <input id="steer" type="range" min="-100" max="100" step="1" value="0" />
+          <div class="scale"><span>links</span><span>0</span><span>rechts</span></div>
+          <div class="row" style="gap:8px;margin-top:10px">
+            <button class="btn primary" id="btnCenter">Zentrieren</button>
+            <button class="btn" id="btnL">-10</button>
+            <button class="btn" id="btnR">+10</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TELEMETRY -->
+      <section class="card">
+        <p class="section-title">Telemetrie</p>
+        <div class="tele">
+          <div class="kv">
+            <div class="k">RPM</div>
+            <div class="v" id="rpm">–</div>
+          </div>
+          <div class="kv">
+            <div class="k">Safety</div>
+            <div class="v" id="safety">–</div>
+          </div>
+          <div class="kv">
+            <div class="k">Target Speed</div>
+            <div class="v" id="tSpeed">0</div>
+          </div>
+          <div class="kv">
+            <div class="k">Target Steer</div>
+            <div class="v" id="tSteer">0</div>
+          </div>
+          <!-- NEU: Lives -->
+          <div class="kv">
+            <div class="k">Lives</div>
+            <div class="v" id="lives">–</div>
+          </div>
+          <div class="kv">
+              <div class="k">Output Speed</div>
+              <div class="v" id="oSpeed">0</div>
+          </div>
+        </div>
+        <div class="list" id="currents"></div>
+      </section>
+    </div>
+
+    <footer>HAWK Fakultät Ingenieurwissenschaften und Gesundheit</footer>
+  </div>
+
+  <script>
+    const speed = document.getElementById('speed');
+    const steer = document.getElementById('steer');
+    const speedVal = document.getElementById('speedVal');
+    const steerVal = document.getElementById('steerVal');
+    const netChip = document.getElementById('netChip');
+
+    const rpm = document.getElementById('rpm');
+    const safety = document.getElementById('safety');
+    const tSpeed = document.getElementById('tSpeed');
+    const tSteer = document.getElementById('tSteer');
+    const livesEl = document.getElementById('lives');
+    const currentsBox = document.getElementById('currents');
+
+    const clamp = (v,min,max)=>Math.max(min,Math.min(max,v|0));
+    const setText = (el, v)=>{ el.textContent = v; };
+
+    // NEU: Zahlen mit Einheit "A" formatieren
+    function fmtA(x, digits=2){
+      const n = Number(x);
+      if (!isFinite(n)) return '–';
+      return n.toLocaleString('de-DE', {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+      }) + ' A';
+    }
+
+    // Debounce, um die Pico-CPU zu schonen
+    let debounceTimer = null;
+    function sendControlDebounced(){
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(sendControl, 60);
+    }
+
+    function sendControl(){
+      const s = clamp(+speed.value,-100,100);
+      const st = clamp(+steer.value,-100,100);
+      speedVal.textContent = s;
+      steerVal.textContent = st;
+
+      const url = `/control?speed=${encodeURIComponent(s)}&steer=${encodeURIComponent(st)}`;
+      fetch(url, { method:'GET', cache:'no-store' })
+        .then(()=>heartbeatOk())
+        .catch(()=>heartbeatFail());
+    }
+
+    function centerSteering(){
+      fetch('/center', { method:'GET', cache:'no-store' })
+        .then(()=> {
+          steer.value = 0;
+          steerVal.textContent = 0;
+          sendControl();
+        })
+        .catch(()=>heartbeatFail());
+    }
+
+    let lastTeleT = 0;
+
+    function updateTelemetry(){
+      fetch('/telemetry', {cache:'no-store'})
+        .then(r=>r.json())
+        .then(j=>{
+          heartbeatOk();
+
+          // Safety + DEAD-Blink
+          if ('safety' in j){
+            const ui = j.safety || 'OK';
+            let cls = 'v ' + (ui==='OK' ? 'ok' : (ui==='WARN' ? 'mid' : 'bad'));
+            safety.className = cls;
+            safety.textContent = ui;
+          }
+          const isDead = (j.safety_raw === 'DEAD');
+          document.body.classList.toggle('blink', isDead);
+          netChip.classList.toggle('blink', isDead);
+
+          if ('rpm' in j)             setText(rpm, j.rpm==null?'–':j.rpm);
+          if ('speed_target' in j)    setText(tSpeed, j.speed_target|0);
+          if ('steer_target' in j)    setText(tSteer, j.steer_target|0);
+
+          // Lives (farbcodiert)
+          if (typeof j.lives === 'number'){
+            let lcls = 'v';
+            if (j.lives <= 0)      lcls += ' bad';
+            else if (j.lives <= 3) lcls += ' mid';
+            else                   lcls += ' ok';
+            livesEl.className = lcls;
+            livesEl.textContent = j.lives;
+          } else {
+            livesEl.className = 'v';
+            livesEl.textContent = '–';
+          }
+
+          // Ströme mit Einheit
+          let html = '';
+          if (j.current && typeof j.current === 'object'){
+            html += '<div><b>Ströme</b></div>';
+            if ('motor' in j.current) html += `<div>motor: <b>${fmtA(j.current.motor)}</b></div>`;
+            if ('system'  in j.current) html += `<div>system:  <b>${fmtA(j.current.system)}</b></div>`;
+          }
+          currentsBox.innerHTML = html;
+
+          // Slider initial an Targets anpassen
+          if (!lastTeleT){
+            if (typeof j.speed_target === 'number'){
+              speed.value = clamp(j.speed_target,-100,100);
+              speedVal.textContent = speed.value;
+            }
+            if (typeof j.steer_target === 'number'){
+              steer.value = clamp(j.steer_target,-100,100);
+              steerVal.textContent = steer.value;
+            }
+          }
+          lastTeleT = (j.ts||0);
+
+          if (typeof j.speed_safe === 'number') {
+            const oSpeed = document.getElementById('oSpeed');
+            setText(oSpeed, j.speed_safe|0);
+            oSpeed.className = 'v ' + ((j.speed_safe|0)===(j.speed_target|0) ? 'ok' : 'mid');
+          }
+
+          // Slider visuell auf 0 ziehen, wenn Safety hart stoppt
+          const hardStop = (j.safety_raw === 'TIMEOUT' || j.safety_raw === 'DEAD');
+          if (hardStop && (j.speed_target|0) !== 0) {
+            speed.value = 0;
+            speedVal.textContent = 0;
+          }
+
+        })
+        .catch(()=>heartbeatFail());
+    }
+
+    // Verbindungsanzeige
+    let offlineTimer = null;
+    function heartbeatOk(){
+      netChip.textContent = 'verbunden';
+      netChip.style.background = 'var(--accent)';
+      if (offlineTimer) clearTimeout(offlineTimer);
+      offlineTimer = setTimeout(()=>{
+        netChip.textContent = 'still…';
+        netChip.style.background = 'var(--warn)';
+      }, 2500);
+    }
+    function heartbeatFail(){
+      netChip.textContent = 'getrennt';
+      netChip.style.background = 'var(--danger)';
+    }
+
+    // Buttons
+    document.getElementById('btnCenter').addEventListener('click', centerSteering);
+    document.getElementById('btnStop').addEventListener('click', ()=>{ speed.value = 0; sendControl(); });
+    document.getElementById('btnSlow').addEventListener('click', ()=>{ speed.value = clamp(+speed.value-25,-100,100); sendControl(); });
+    document.getElementById('btnFast').addEventListener('click', ()=>{ speed.value = clamp(+speed.value+25,-100,100); sendControl(); });
+    document.getElementById('btnL').addEventListener('click', ()=>{ steer.value = clamp(+steer.value-10,-100,100); sendControl(); });
+    document.getElementById('btnR').addEventListener('click', ()=>{ steer.value = clamp(+steer.value+10,-100,100); sendControl(); });
+
+    // Slider-Events
+    speed.addEventListener('input', sendControlDebounced);
+    steer.addEventListener('input', sendControlDebounced);
+
+    // Start
+    updateTelemetry();
+    setInterval(updateTelemetry, 500);
+  </script>
+</body>
+</html>

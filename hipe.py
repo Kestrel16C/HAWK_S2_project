@@ -53,6 +53,9 @@ Startet die Teilmodule (Antrieb, Lenkung, Strommessung, Sicherheit, Netzwerk,
 Webserver) und betreibt eine **nicht-blockierende** Hauptschleife. Die
 Weboberfläche liefert Sollwerte (Speed/Steer) und Heartbeats; die ``SafetyManager``-Logik begrenzt und schützt den Antrieb.
 
+Zusätzlich werden über den ``/aux``-Kanal Konfigurationsbefehle (Lenkungstrimmung)
+und Steuerbefehle für Erweiterungen (Autopilot, Greifarm) verarbeitet.
+
 Examples:
 
     from hipe import hipe
@@ -75,6 +78,14 @@ from secure.current_monitor import CurrentMonitor # Zweikanal-Strommessung
 from secure.safety import SafetyManager           # Sicherheitslogik
 from secure.crash_counter import CrashCounter     # „Deathmatch“-Lebenszähler
 
+# ProjektSenior
+try:
+    from modules.senior import SeniorProject
+    SENIOR_AVAILABLE = True
+except ImportError:
+    print("Kein Senior-Projekt gefunden (modules/senior.py fehlt).")
+    SENIOR_AVAILABLE = False
+
 
 class hipe:
     """Zentrale, nicht-blockierende Mainloop für Fahrzeug, Telemetrie und Web-UI.
@@ -83,6 +94,7 @@ class hipe:
         - Verbindet Weboberfläche und Hardware (Antrieb/Lenkung).
         - Erfasst Telemetrie (Drehzahl, Ströme, Status).
         - Erzwingt Sicherheit (Stromlimits, Totmannschaltung, Stall-Erkennung).
+        - Verarbeitet Erweiterungsbefehle (Aux) für Setup und Autonomie.
         - Zeigt Aktivität per LED-Muster.
 
     Attributes:
@@ -97,6 +109,8 @@ class hipe:
         current (CurrentMonitor): Strommessung (zweikanalig).
         safety (SafetyManager): Sicherheitslogik (Begrenzungen, Dead-Man, Stall).
         crash (CrashCounter): Crash-/Lebenszähler (Deathmatch-Modus).
+        mode (str): Betriebsmodus ("MANUAL" oder "AUTO") für Autonomie-Erweiterung.
+        senior (SeniorProject | None): Instanz des Studenten-Codes.
         _target_speed (float): Zielgeschwindigkeit in % (−100..+100).
         _target_steer (float): Ziellenkung in % (−100..+100).
         _safe_speed (int): Von Safety begrenzter %-Wert für den Antrieb.
@@ -114,7 +128,6 @@ class hipe:
         Returns:
             None
         """
-
 
         # --- Zeit/Loop-Parameter ---------------------------------------------
         self.loop_hz = 100 # Takt der Hauptschleife (z. B. 100 ⇒ ~10 ms/Tick).
@@ -136,6 +149,11 @@ class hipe:
         self.net = NetworkManager(country="DE")
         self.wifi_password = wifi_password
 
+        # --- Zustandsautomat (State Machine) ---------------------------------
+        # MANUAL: Web-Joystick steuert direkt.
+        # AUTO: Autopilot-Klasse übernimmt die Kontrolle (Erweiterung).
+        self.mode = "MANUAL"
+
 
         # ---------------------------------------------------------------------
         # HARDWARE: ANTRIEB (MOTOR + ENCODER)
@@ -155,7 +173,7 @@ class hipe:
             pwm_freq_hz=50,        # Normale Servo-Frequenz
             min_us=900, max_us=2100,
             center_us=1500, deadband_us=10,
-            angle_min=-40, angle_max=40,
+            angle_min=-90, angle_max=90,
             trim_deg=0,
             invert=False,
         )
@@ -194,10 +212,14 @@ class hipe:
 
         # 2) HTTP-Server (nicht-blockierend, wird in der Loop gepollt)
         try:
+            # Der Webserver erhält zwei Callbacks:
+            # - on_control: Für hochfrequente Joystick-Daten (/control)
+            # - on_aux: Für Konfiguration und Sonderfunktionen (/aux)
             self.web = WebServer(
                 port=self.port,
                 web_root=self.web_root,
                 on_control=self.on_control,
+                on_aux=self.on_aux_command, # <--- Handler für Setup & Erweiterungen
                 get_telemetry=self.get_telemetry,
                 on_heartbeat=self.on_heartbeat,
                 safety=self.safety,
@@ -213,6 +235,17 @@ class hipe:
         # Für ruhigeres Logging nur bei Änderungen ausgeben
         self._last_out = {"safe": None, "safety": None}
 
+        # ---------------------------------------------------------------------
+        # PROJEKT-MODUL (SENIOR)
+        # ---------------------------------------------------------------------
+        self.senior = None
+        if SENIOR_AVAILABLE:
+            try:
+                self.senior = SeniorProject()
+                print("Senior-Projekt erfolgreich geladen.")
+            except Exception as e:
+                print("Fehler im Senior-Projekt Init:", e)
+
     # -------------------------------------------------------------------------
     # CALLBACKS AUS DEM WEBSERVER
     # -------------------------------------------------------------------------
@@ -220,6 +253,7 @@ class hipe:
     def on_control(self, spd, st) -> None:
         """Web-Callback: neue Zielwerte setzen (Speed/Steer).
 
+        Wird vom Endpoint ``/control`` aufgerufen (Joystick).
         Klemmt Werte in die UI-Spanne (−100..+100) und aktualisiert den
         Heartbeat-Zeitstempel (Totmannschaltung).
 
@@ -244,6 +278,58 @@ class hipe:
         self._target_steer = float(st)
         self._last_heartbeat = time.ticks_ms()
 
+    # -------------------------------------------------------------------------
+    # Handler für Zusatz-Befehle (Setup & Erweiterungen)
+    # -------------------------------------------------------------------------
+    def on_aux_command(self, type, data) -> None:
+        """Verarbeitet Zusatzbefehle vom Webserver (Setup & Erweiterungen).
+
+        Wird über den Endpunkt ``/aux?type=...&data=...`` aufgerufen.
+        Dient zur Laufzeit-Konfiguration (Lenkung) und Steuerung von
+        Zusatzmodulen (Autopilot, Greifarm).
+
+        Args:
+            type (str): Befehlstyp (z. B. "steer_config", "mode", "trigger").
+            data (str): Nutzdaten (z. B. "-90,90,0" oder "auto").
+        """
+        # Debugging
+        print(f"[AUX] Type: {type} | Data: {data}")
+
+        # --- A: FAHRWERK SETUP (Lenkung) ---
+        if type == "steer_config":
+            # Erwartet: "min,max,trim" (z.B. "-40,40,5")
+            try:
+                parts = data.split(",")
+                if len(parts) == 3:
+                    # Wir greifen direkt auf das Steering-Objekt zu
+                    if self.steering:
+                        self.steering.angle_min = int(parts[0])
+                        self.steering.angle_max = int(parts[1])
+                        self.steering.trim_deg = int(parts[2])
+                        print("-> Lenkungskonfiguration aktualisiert.")
+            except Exception as e:
+                print(f"-> Fehler bei steer_config: {e}")
+
+        # --- B: MODUS WECHSEL (Autopilot) ---
+        elif type == "mode":
+            if data == "auto":
+                self.mode = "AUTO"
+                print("-> Modus: AUTONOM")
+            else:
+                self.mode = "MANUAL"
+                self._target_speed = 0  # Sicherheitsstopp
+                print("-> Modus: MANUELL")
+
+        # --- C: GREIFARM & TRIGGER (Weiterleitung an Senior) ---
+        elif (type == "arm" or type == "trigger"):
+            # Wenn das Senior-Modul geladen ist, wird es weitergeleitet
+            if self.senior:
+                try:
+                    self.senior.handle_aux(type, data)
+                except Exception as e:
+                    print("Fehler im Senior-Aux:", e)
+            else:
+                print("Senior-Modul nicht aktiv.")
 
     def on_heartbeat(self) -> None:
         """Web-Callback: Heartbeat für Dead-Man aktualisieren.
@@ -319,13 +405,14 @@ class hipe:
         Ablauf pro Tick (vereinfacht):
 
             1. Webserver bedienen (max. 1 Anfrage).
-            2. Stromfenster mitteln und cachen (~120 ms).
-            3. Dead-Man: Bei altem Heartbeat → Zielgeschwindigkeit auf 0.
-            4. Deathmatch: Leben/„DEAD“ prüfen und ggf. sperren.
-            5. Safety anwenden → sicheren %-Wert berechnen.
-            6. PWM (Antrieb) und Position (Lenkung) ausgeben.
-            7. Takt einhalten (schlafen, falls Zeit übrig).
-            8. LED-Muster je nach Client/Heartbeat.
+            2. Autopilot (Senior) Logik ausführen (Überschreibt ggf. Manual).
+            3. Stromfenster mitteln und cachen (~120 ms).
+            4. Dead-Man: Bei altem Heartbeat → Zielgeschwindigkeit auf 0.
+            5. Deathmatch: Leben/„DEAD“ prüfen und ggf. sperren.
+            6. Safety anwenden → sicheren %-Wert berechnen.
+            7. PWM (Antrieb) und Position (Lenkung) ausgeben.
+            8. Takt einhalten (schlafen, falls Zeit übrig).
+            9. LED-Muster je nach Client/Heartbeat.
 
         Returns:
             None
@@ -336,15 +423,43 @@ class hipe:
         next_tick = time.ticks_ms()
 
         while True:
-            # 1) Webserver
+            # 1) Webserver (holt manuelle Eingaben)
             try:
                 self.web.poll_once()
             except OSError as e:
                 print("web.poll_once failed:", e)
 
+            # -----------------------------------------------------------------
+            # 2) AUTOPILOT (SENIOR) - PRIORITÄT VOR HARDWARE
+            # -----------------------------------------------------------------
+            # Wenn der Autopilot läuft, überschreibt er die manuellen Inputs
+            # des Webservers, bevor diese an die Hardware gehen.
+            if self.mode == "AUTO" and self.senior:
+                try:
+                    # a. Daten holen
+                    rpm = self.drive.get_rpm()
+
+                    # b. Senior-Logik fragen ("Wohin willst du?")
+                    s_speed, s_steer = self.senior.run_autopilot(rpm)
+
+                    # c. Werte setzen (Überschreibt ggf. Joystick-Werte)
+                    self._target_speed = float(s_speed)
+                    self._target_steer = float(s_steer)
+
+                    # d. WICHTIG: Heartbeat füttern (sonst bremst Safety)
+                    self._last_heartbeat = time.ticks_ms()
+
+                except Exception as e:
+                    print("Crash im Senior-Autopilot:", e)
+                    self.mode = "MANUAL"  # Notaus bei Code-Fehler
+                    self._target_speed = 0
+
+            # -----------------------------------------------------------------
+            # REST DER LOOP (Strom, Safety, Ausgabe)
+            # -----------------------------------------------------------------
             now = time.ticks_ms()
 
-            # 2) Strommessung periodisch auswerten
+            # 3) Strommessung periodisch auswerten
             if time.ticks_diff(now, self._last_adc) >= 120:
                 try:
                     self._cur_cache = self.current.read(window_ms=200, want=("avg",))
@@ -353,12 +468,12 @@ class hipe:
                     self._cur_cache = None
                 self._last_adc = now
 
-            # 3) Dead-Man
+            # 4) Dead-Man
             if time.ticks_diff(now, self._last_heartbeat) > self.HEARTBEAT_TIMEOUT_MS:
                 if self._target_speed != 0.0:
                     self._target_speed = 0.0
 
-            # 4) Deathmatch
+            # 5) Deathmatch
             if self.deathmatch_enabled:
                 try:
                     self.crash.tick()
@@ -377,7 +492,7 @@ class hipe:
                     print("deathmatch tick failed:", e)
 
 
-            # 5) Safety anwenden
+            # 6) Safety anwenden
             try:
                 rpm_for_safety = self.drive.get_rpm()
             except (AttributeError, RuntimeError, OSError):
@@ -402,7 +517,7 @@ class hipe:
                 self._last_out["safe"] = safe_pct
                 self._last_out["safety"] = status
 
-            # 6) Hardware ausgeben
+            # 7) Hardware ausgeben
             try:
                 if hasattr(self.drive, "set_percent"):
                     self.drive.set_percent(safe_pct)
@@ -421,7 +536,7 @@ class hipe:
                 print("steering.set_percent failed:", e)
 
 
-            # 7) Takt einhalten
+            # 8) Takt einhalten
             next_tick = time.ticks_add(next_tick, self.dt_ms)
             delay = time.ticks_diff(next_tick, time.ticks_ms())
             if delay > 0:
@@ -430,7 +545,7 @@ class hipe:
                 if delay < -5:
                     next_tick = time.ticks_ms()
 
-            # 8) LED-Muster (fast = nur AP, slow = Client/Heartbeat aktiv)
+            # 9) LED-Muster (fast = nur AP, slow = Client/Heartbeat aktiv)
             has_client = False
             try:
                 stations = self.net.stations()

@@ -136,6 +136,11 @@ Dieses Projekt enthält Komponenten, die auf externer MIT-lizenzierter Software 
   Lizenztext unter:  
   `THIRD_PARTY/tm1637_LICENSE.txt`
 
+- **NippleJS (MIT License)**
+  Basierend auf: https://github.com/yoannmoinet/nipplejs
+  Lizenztext unter:  
+  `THIRD_PARTY/nipplejs_LICENSE.txt`
+
 Alle Erweiterungen und Änderungen wurden von **Tobias Bürmann (HAWK)** vorgenommen.
 
 ### Firmware & Secure-Module

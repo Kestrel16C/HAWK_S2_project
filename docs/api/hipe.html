@@ -396,6 +396,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#hipe.hipe.on_aux_command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        on_aux_command
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#hipe.hipe.on_heartbeat" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -699,6 +710,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="senior.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    modules/senio.py
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -761,6 +800,17 @@
     <span class="md-ellipsis">
       
         on_control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hipe.hipe.on_aux_command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        on_aux_command
       
     </span>
   </a>
@@ -846,6 +896,8 @@
 <p>Startet die Teilmodule (Antrieb, Lenkung, Strommessung, Sicherheit, Netzwerk,
 Webserver) und betreibt eine <strong>nicht-blockierende</strong> Hauptschleife. Die
 Weboberfläche liefert Sollwerte (Speed/Steer) und Heartbeats; die <code>SafetyManager</code>-Logik begrenzt und schützt den Antrieb.</p>
+<p>Zusätzlich werden über den <code>/aux</code>-Kanal Konfigurationsbefehle (Lenkungstrimmung)
+und Steuerbefehle für Erweiterungen (Autopilot, Greifarm) verarbeitet.</p>
 <p>Examples:</p>
 <pre><code>from hipe import hipe
 h = hipe("Hier WLAN-Passwort angeben")
@@ -895,6 +947,7 @@ h.run()
 <li>Verbindet Weboberfläche und Hardware (Antrieb/Lenkung).</li>
 <li>Erfasst Telemetrie (Drehzahl, Ströme, Status).</li>
 <li>Erzwingt Sicherheit (Stromlimits, Totmannschaltung, Stall-Erkennung).</li>
+<li>Verarbeitet Erweiterungsbefehle (Aux) für Setup und Autonomie.</li>
 <li>Zeigt Aktivität per LED-Muster.</li>
 </ul>
 </details>
@@ -1031,6 +1084,28 @@ h.run()
             </td>
           </tr>
           <tr class="doc-section-item">
+            <td><code><span title="hipe.hipe.mode">mode</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Betriebsmodus ("MANUAL" oder "AUTO") für Autonomie-Erweiterung.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="hipe.hipe.senior">senior</span></code></td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="SeniorProject (modules.senior.SeniorProject)" href="senior.html#modules.senior.SeniorProject">SeniorProject</a> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Instanz des Studenten-Codes.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
             <td><code><span title="hipe.hipe._target_speed">_target_speed</span></code></td>
             <td>
                   <code><span title="float">float</span></code>
@@ -1099,7 +1174,8 @@ h.run()
     <div class="doc doc-contents ">
 
         <p>Web-Callback: neue Zielwerte setzen (Speed/Steer).</p>
-<p>Klemmt Werte in die UI-Spanne (−100..+100) und aktualisiert den
+<p>Wird vom Endpoint <code>/control</code> aufgerufen (Joystick).
+Klemmt Werte in die UI-Spanne (−100..+100) und aktualisiert den
 Heartbeat-Zeitstempel (Totmannschaltung).</p>
 
 
@@ -1167,6 +1243,74 @@ Heartbeat-Zeitstempel (Totmannschaltung).</p>
               <div class="doc-md-description">
                 <p>None</p>
               </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="hipe.hipe.on_aux_command" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">on_aux_command</span><span class="p">(</span><span class="nb">type</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Verarbeitet Zusatzbefehle vom Webserver (Setup &amp; Erweiterungen).</p>
+<p>Wird über den Endpunkt <code>/aux?type=...&amp;data=...</code> aufgerufen.
+Dient zur Laufzeit-Konfiguration (Lenkung) und Steuerung von
+Zusatzmodulen (Autopilot, Greifarm).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>type</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Befehlstyp (z. B. "steer_config", "mode", "trigger").</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>data</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Nutzdaten (z. B. "-90,90,0" oder "auto").</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
             </td>
           </tr>
       </tbody>
@@ -1282,13 +1426,14 @@ Heartbeat-Zeitstempel (Totmannschaltung).</p>
         <p>Führt die nicht-blockierende Hauptschleife aus.</p>
 <p>Ablauf pro Tick (vereinfacht):</p>
 <pre><code>1. Webserver bedienen (max. 1 Anfrage).
-2. Stromfenster mitteln und cachen (~120 ms).
-3. Dead-Man: Bei altem Heartbeat → Zielgeschwindigkeit auf 0.
-4. Deathmatch: Leben/„DEAD“ prüfen und ggf. sperren.
-5. Safety anwenden → sicheren %-Wert berechnen.
-6. PWM (Antrieb) und Position (Lenkung) ausgeben.
-7. Takt einhalten (schlafen, falls Zeit übrig).
-8. LED-Muster je nach Client/Heartbeat.
+2. Autopilot (Senior) Logik ausführen (Überschreibt ggf. Manual).
+3. Stromfenster mitteln und cachen (~120 ms).
+4. Dead-Man: Bei altem Heartbeat → Zielgeschwindigkeit auf 0.
+5. Deathmatch: Leben/„DEAD“ prüfen und ggf. sperren.
+6. Safety anwenden → sicheren %-Wert berechnen.
+7. PWM (Antrieb) und Position (Lenkung) ausgeben.
+8. Takt einhalten (schlafen, falls Zeit übrig).
+9. LED-Muster je nach Client/Heartbeat.
 </code></pre>
 
 
