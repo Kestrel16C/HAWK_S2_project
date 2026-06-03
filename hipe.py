@@ -162,7 +162,8 @@ class hipe:
             # --- Kinematik (für Telemetrie) ---
             pulses_per_rev=16,     # Flanken A-rising pro Motorumdrehung (laut Datenblatt)
             gear_ratio=6.3,        # Getriebe Motorwelle:Ausgangswelle (laut Datenblatt)
-            wheel_diameter=0.02    # Raddurchmesser in m
+            wheel_diameter=0.02,    # Raddurchmesser in m
+            invert_dir=False        # Motordrehrichtung umkehren
         )
 
         # ---------------------------------------------------------------------

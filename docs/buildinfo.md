@@ -1,7 +1,7 @@
 # Build-Info
 
-- **Commit:** e10352d56ed3e37d3a97ef17a5d28f57c226bff4 (e10352d5)
+- **Commit:** 696ce5cbea0801048381d2c4df389f4f18b96cc7 (696ce5cb)
 - **Branch:** main
-- **Pipeline:** 2053
-- **Buildzeit (UTC):** 2026-05-21T12:18:11Z
+- **Pipeline:** 2223
+- **Buildzeit (UTC):** 2026-06-03T06:38:12Z
 - **MicroPython:** v1.28.0
