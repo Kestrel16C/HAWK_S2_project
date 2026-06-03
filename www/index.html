@@ -45,6 +45,14 @@
     .k { font-size: 10px; color: var(--muted); margin-bottom: 2px; } /* schrift kleiner, abstand kleiner */
     .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; } /* werte etwas kleiner */
     .ok { color: var(--accent2); } .bad { color: var(--danger); } .mid { color: var(--warn); }
+
+    /* Blink-/Puls-Animation für DEAD */
+    @keyframes blinkPulse {
+      from { opacity: .35; transform: scale(1.00); }
+      to   { opacity: 1;    transform: scale(1.03); }
+    }
+    .blink { animation: blinkPulse .8s ease-in-out infinite alternate; }
+
     .list { margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
     .li-row { display: flex; justify-content: space-between; }
 
@@ -379,15 +387,39 @@
 
                 // Basis-Werte
                 document.getElementById('rpm').textContent = d.rpm ?? 0;
-                document.getElementById('lives').textContent = d.lives ?? 0;
                 document.getElementById('oSpeed').textContent = d.speed_safe ?? 0;
 
-                // Safety Status
+                // Lives farbcodiert anzeigen
+                const livesEl = document.getElementById('lives');
+                if (typeof d.lives === 'number') {
+                    let lcls = 'v';
+                    if (d.lives <= 0) {
+                        lcls += ' bad';
+                    } else if (d.lives <= 3) {
+                        lcls += ' mid';
+                    } else {
+                        lcls += ' ok';
+                    }
+                    livesEl.className = lcls;
+                    livesEl.textContent = d.lives;
+                } else {
+                    livesEl.className = 'v';
+                    livesEl.textContent = '–';
+                }
+
+                // Safety Status + DEAD-Pulsieren
                 const safeEl = document.getElementById('safety');
+                const isDead = d.safety_raw === 'DEAD';
                 safeEl.textContent = d.safety ?? '-';
-                if(d.safety === 'OK') safeEl.className = 'v ok';
-                else if(d.safety_raw === 'DEAD') { safeEl.className = 'v bad'; document.body.classList.add('blink'); }
-                else { safeEl.className = 'v mid'; document.body.classList.remove('blink'); }
+                if (d.safety === 'OK') {
+                    safeEl.className = 'v ok';
+                } else if (isDead) {
+                    safeEl.className = 'v bad';
+                } else {
+                    safeEl.className = 'v mid';
+                }
+                document.body.classList.toggle('blink', isDead);
+                ui.chip.classList.toggle('blink', isDead);
 
                 // Ströme
                 if(d.current) {
