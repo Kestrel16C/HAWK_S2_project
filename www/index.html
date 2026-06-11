@@ -510,8 +510,18 @@
   <script>
     // --- KONFIGURATION & STATE ---
     const CFG = {
-      heartbeatMs: 250,
-      telemetryMs: 500
+      // Steuer-Heartbeat beim Fahren/Lenken
+      heartbeatMs: 120,
+
+      // Telemetrie im Stand
+      telemetryMsIdle: 500,
+
+      // Telemetrie während Fahrt/Lenkung bewusst langsamer,
+      // damit /control Vorrang bekommt
+      telemetryMsDriving: 1200,
+
+      // Mindestabstand zwischen zwei Control-Requests
+      minControlGapMs: 45
     };
 
     const state = {
@@ -677,7 +687,8 @@
     });
 
     manager.on('move', (evt, data) => {
-      const dist = Math.min(data.distance / 75, 1.0);
+      //const dist = Math.min(data.distance / 75, 1.0);
+      const dist = Math.min(data.distance / 65, 1.0); //direktere Lenkung
       const angle = data.angle.radian;
 
       let s = Math.round(Math.sin(angle) * dist * 100);
@@ -725,25 +736,35 @@
       const now = Date.now();
       const isDriving = (state.speed !== 0 || state.steer !== 0);
 
-      // Steuerdaten senden, wenn neue Werte anliegen oder beim Fahren als Heartbeat
+      // 1. Steuerung hat absolute Priorität.
+      // Neue Joystick-Werte oder Heartbeat beim Fahren/Lenken werden bevorzugt gesendet.
       if (
         !state.controlBusy &&
+        (
+          now - state.lastControl > CFG.minControlGapMs
+        ) &&
         (
           state.needsUpdate ||
           (isDriving && (now - state.lastControl > CFG.heartbeatMs))
         )
       ) {
         sendControl();
+        return;
       }
 
-      // Telemetrie unabhängig von der Steuerung regelmäßig abfragen
+      // 2. Telemetrie nur dann senden, wenn gerade kein Control-Request läuft
+      // und kein neuer Steuerwert wartet.
+      const teleInterval = isDriving ? CFG.telemetryMsDriving : CFG.telemetryMsIdle;
+
       if (
+        !state.controlBusy &&
         !state.teleBusy &&
-        (now - state.lastTele > CFG.telemetryMs)
+        !state.needsUpdate &&
+        (now - state.lastTele > teleInterval)
       ) {
         sendTelemetry();
       }
-    }, 20);
+    }, 15);
 
     function sendControl() {
       state.controlBusy = true;
