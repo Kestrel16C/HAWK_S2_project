@@ -1,15 +1,3 @@
-# Projekt Junior – Starterpaket (Raspberry Pi Pico 2 W)
-
-Willkommen! Dieses Repository enthält die benötigten Artefakte, um das Fahrzeug aus dem Juniorprojekt im ersten Semester des Studiengangs Ingenieurwissenschaften mit MicroPython auf dem **Raspberry Pi Pico 2 W** zu betreiben.
-
----
-
-Die aktuelle Firmware ist unter Releases erhältlich:
-[Download Firmware](https://git.i.hawk.de/informatik/projektjunior/-/releases/permalink/latest)
-
----
-
-
 ## Schnelleinstieg
 
 1. **Firmware flashen**
