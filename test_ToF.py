@@ -61,13 +61,20 @@ for name, addr in (("front", ADDR_FRONT), ("left", ADDR_LEFT), ("right", DEFAULT
 
 if not sensors:
     print("No sensors initialized -- check wiring before continuing.")
-else:
-    while True:
-        readings = []
-        for name, tof in sensors.items():
-            try:
-                readings.append("%s: %d mm" % (name, tof.range))
-            except OSError as e:
-                readings.append("%s: read error (%s)" % (name, e))
-        print("  |  ".join(readings))
-        time.sleep_ms(200)
+
+
+def measure():
+    """Type measure() in the REPL to get one reading from every available sensor."""
+    readings = []
+    for name in ("front", "left", "right"):
+        if name not in sensors:
+            readings.append("%s: n/a" % name)
+            continue
+        try:
+            readings.append("%s: %d mm" % (name, sensors[name].range))
+        except OSError as e:
+            readings.append("%s: read error (%s)" % (name, e))
+    print("  |  ".join(readings))
+
+
+print("\nSetup done. Type measure() in the REPL to take a reading.")
