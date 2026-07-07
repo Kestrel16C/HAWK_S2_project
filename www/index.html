@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
-  <title>Fahrzeugsteuerung</title>
+  <title>Vehicle Control</title>
   <script src="nipplejs.min.js"></script>
   <style>
     :root{
@@ -12,10 +12,9 @@
       --accent:#38bdf8; --accent2:#34d399; --warn:#f59e0b; --danger:#ef4444;
     }
 
-    /* Basis Layout */
+    /* Base layout */
     *{
       box-sizing:border-box;
-      touch-action:none;
       user-select:none;
       -webkit-user-select:none;
     }
@@ -26,17 +25,13 @@
       background:var(--bg);
       color:var(--text);
       font-family:system-ui,-apple-system,sans-serif;
-      height:100%;
-      overflow:hidden;
+      min-height:100%;
     }
 
     .wrap{
       max-width:920px;
       margin:0 auto;
-      padding:16px;
-      height:100vh;
-      display:flex;
-      flex-direction:column;
+      padding:16px 16px 96px; /* bottom padding keeps content clear of status bar */
     }
 
     /* Header */
@@ -45,7 +40,7 @@
       align-items:center;
       justify-content:space-between;
       margin-bottom:16px;
-      flex-shrink:0;
+      gap:12px;
     }
 
     h1{
@@ -56,7 +51,7 @@
     .h-grp{
       display:flex;
       align-items:center;
-      gap:16px;
+      gap:12px;
     }
 
     .chip{
@@ -66,53 +61,156 @@
       padding:4px 12px;
       border-radius:999px;
       font-weight:600;
+      white-space:nowrap;
     }
 
-    /* Grid & Cards */
-    .grid{
-      display:grid;
-      grid-template-columns:1fr;
-      gap:12px;
-      flex-grow:1;
-      min-height:0;
+    /* Kill switch — always visible */
+    #killBtn{
+      position:fixed;
+      right:16px;
+      bottom:76px;
+      z-index:10000;
+      background:var(--danger);
+      color:#fff;
+      border:2px solid rgba(255,255,255,0.25);
+      border-radius:14px;
+      padding:14px 20px;
+      font-size:15px;
+      font-weight:800;
+      letter-spacing:1px;
+      cursor:pointer;
+      box-shadow:0 6px 18px rgba(239,68,68,0.45);
     }
 
-    @media (min-width:780px){
-      .grid{
-        grid-template-columns:1.2fr 0.8fr;
-      }
+    #killBtn:active{
+      transform:scale(0.95);
     }
 
-    .card{
+    /* Collapsible sections */
+    details.section{
       background:var(--panel);
       border:1px solid rgba(255,255,255,0.05);
       border-radius:16px;
-      padding:12px;
-      display:flex;
-      flex-direction:column;
+      margin-bottom:12px;
       box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);
-      overflow-y:auto;
+      overflow:hidden;
     }
 
-    .section-title{
-      font-size:11px;
-      color:var(--muted);
-      margin-bottom:8px;
+    details.section > summary{
+      list-style:none;
+      cursor:pointer;
+      padding:14px 16px;
+      font-size:12px;
+      font-weight:700;
       text-transform:uppercase;
       letter-spacing:1px;
-      font-weight:600;
-      flex-shrink:0;
+      color:var(--muted);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+
+    details.section > summary::-webkit-details-marker{ display:none; }
+
+    details.section > summary::after{
+      content:'▸';
+      color:var(--muted);
+      transition:transform 0.2s;
+    }
+
+    details.section[open] > summary::after{
+      transform:rotate(90deg);
+    }
+
+    .section-body{
+      padding:0 16px 16px;
+    }
+
+    /* Form rows */
+    .form-row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+
+    .form-row label{
+      font-size:13px;
+      color:var(--muted);
+      min-width:110px;
+    }
+
+    input[type=number]{
+      background:rgba(255,255,255,0.05);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:10px;
+      color:var(--text);
+      padding:10px 12px;
+      font-size:15px;
+      width:110px;
+    }
+
+    select{
+      background:var(--panel);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:10px;
+      color:var(--text);
+      padding:10px 12px;
+      font-size:15px;
+    }
+
+    .btn{
+      padding:10px 18px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,0.1);
+      background:rgba(255,255,255,0.05);
+      color:var(--text);
+      font-weight:bold;
+      font-size:14px;
+      cursor:pointer;
+      transition:0.2s;
+    }
+
+    .btn:active{
+      background:var(--accent);
+      color:var(--bg);
+      transform:scale(0.95);
+    }
+
+    .btn.primary{
+      background:var(--accent);
+      color:var(--bg);
+    }
+
+    .btn.toggled{
+      background:var(--accent2);
+      color:var(--bg);
+    }
+
+    .sub-title{
+      font-size:11px;
+      color:var(--accent);
+      text-transform:uppercase;
+      letter-spacing:1px;
+      border-bottom:1px solid #334155;
+      padding-bottom:6px;
+      margin:18px 0 12px;
+    }
+
+    .sub-title:first-child{
+      margin-top:0;
     }
 
     /* Joystick */
     #joy-container{
-      flex-grow:1;
       width:100%;
-      min-height:180px;
+      height:220px;
       background:radial-gradient(circle, rgba(56,189,248,0.05) 0%, rgba(15,23,42,0) 70%);
       position:relative;
       border-radius:12px;
       border:1px solid rgba(255,255,255,0.02);
+      touch-action:none;
     }
 
     #joy-container::after{
@@ -126,10 +224,10 @@
       pointer-events:none;
     }
 
-    /* Telemetrie */
+    /* Telemetry tiles */
     .tele{
       display:grid;
-      grid-template-columns:1fr 1fr;
+      grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));
       gap:8px;
     }
 
@@ -153,50 +251,58 @@
       line-height:1.1;
     }
 
-    .ok{
-      color:var(--accent2);
+    .ok{ color:var(--accent2); }
+    .bad{ color:var(--danger); }
+    .mid{ color:var(--warn); }
+
+    .color-swatch{
+      display:inline-block;
+      width:14px;
+      height:14px;
+      border-radius:4px;
+      border:1px solid rgba(255,255,255,0.2);
+      vertical-align:middle;
+      margin-right:6px;
+      background:#334155;
     }
 
-    .bad{
-      color:var(--danger);
+    .placeholder{
+      color:var(--muted);
+      font-size:13px;
+      text-align:center;
+      padding:24px 0;
     }
 
-    .mid{
-      color:var(--warn);
+    /* Bottom status bar (always visible) */
+    .statusbar{
+      position:fixed;
+      left:0;
+      right:0;
+      bottom:0;
+      background:var(--panel);
+      border-top:1px solid rgba(255,255,255,0.08);
+      display:grid;
+      grid-template-columns:repeat(4, 1fr);
+      gap:8px;
+      padding:8px 12px;
+      z-index:9000;
     }
 
-    /* Blink-/Puls-Animation für DEAD */
+    .statusbar .kv{
+      text-align:center;
+    }
+
+    /* Blink/pulse animation for DEAD */
     @keyframes blinkPulse {
-      from {
-        opacity:.35;
-        transform:scale(1.00);
-      }
-      to {
-        opacity:1;
-        transform:scale(1.03);
-      }
+      from { opacity:.35; transform:scale(1.00); }
+      to   { opacity:1;   transform:scale(1.03); }
     }
 
     .blink{
       animation:blinkPulse .8s ease-in-out infinite alternate;
     }
 
-    .list{
-      margin-top:auto;
-      padding-top:16px;
-      border-top:1px solid rgba(255,255,255,0.05);
-      font-size:13px;
-      display:flex;
-      flex-direction:column;
-      gap:4px;
-    }
-
-    .li-row{
-      display:flex;
-      justify-content:space-between;
-    }
-
-    /* Overlay Styles */
+    /* Overlay styles */
     .overlay{
       position:fixed;
       inset:0;
@@ -253,7 +359,6 @@
       cursor:pointer;
     }
 
-    /* Header Buttons */
     .tool-btn{
       background:none;
       border:none;
@@ -267,52 +372,6 @@
     .tool-btn:hover{
       filter:grayscale(0%);
       transform:scale(1.1);
-    }
-
-    .tool-btn.active{
-      filter:grayscale(0%);
-      color:var(--accent);
-    }
-
-    /* Controls */
-    .toggle-switch{
-      width:100%;
-      height:50px;
-      background:#334155;
-      border-radius:25px;
-      position:relative;
-      cursor:pointer;
-      transition:0.3s;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      margin-bottom:20px;
-    }
-
-    .toggle-switch.active{
-      background:var(--accent2);
-    }
-
-    .toggle-switch .knob{
-      position:absolute;
-      left:5px;
-      width:40px;
-      height:40px;
-      background:white;
-      border-radius:50%;
-      transition:0.3s;
-      box-shadow:0 2px 5px rgba(0,0,0,0.3);
-    }
-
-    .toggle-switch.active .knob{
-      left:calc(100% - 45px);
-    }
-
-    .toggle-switch .label{
-      font-weight:bold;
-      z-index:2;
-      pointer-events:none;
-      text-shadow:0 1px 2px rgba(0,0,0,0.5);
     }
 
     .slider-row{
@@ -343,184 +402,158 @@
       background:var(--text);
     }
 
-    input.sl-speed{
-      accent-color:var(--accent2);
-    }
+    input.sl-speed{ accent-color:var(--accent2); }
+    input.sl-speed::-webkit-slider-thumb{ background:var(--accent2); }
+    input.sl-hw{ accent-color:var(--warn); }
+    input.sl-hw::-webkit-slider-thumb{ background:var(--warn); }
 
-    input.sl-speed::-webkit-slider-thumb{
-      background:var(--accent2);
-    }
-
-    input.sl-hw{
-      accent-color:var(--warn);
-    }
-
-    input.sl-hw::-webkit-slider-thumb{
-      background:var(--warn);
-    }
-
-    input.sl-servo{
-      accent-color:var(--accent);
-    }
-
-    input.sl-servo::-webkit-slider-thumb{
-      background:var(--accent);
-    }
-
-    /* Action Buttons */
-    .btn-row{
-      display:flex;
-      gap:12px;
-      margin-bottom:20px;
-    }
-
-    .btn-row button{
-      flex:1;
-      padding:16px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,0.1);
-      background:rgba(255,255,255,0.05);
-      color:var(--text);
-      font-weight:bold;
-      font-size:14px;
-      cursor:pointer;
-      transition:0.2s;
-    }
-
-    .btn-row button:active{
-      background:var(--accent);
-      color:var(--bg);
-      transform:scale(0.95);
+    footer{
+      font-size:11px;
+      color:var(--muted);
+      text-align:center;
+      margin-top:8px;
     }
   </style>
 </head>
 <body id="bodyEl">
   <div class="wrap">
     <header>
-      <h1>Fahrzeugsteuerung</h1>
+      <h1>Vehicle Control</h1>
       <div class="h-grp">
-        <div class="chip" id="netChip">verbinden...</div>
-        <button class="tool-btn" onclick="openOverlay('setup')" title="Grundeinstellungen">⚙️</button>
-        <button class="tool-btn" onclick="openOverlay('extra')" title="Erweiterungen">🤖</button>
+        <div class="chip" id="netChip">connecting...</div>
+        <button class="tool-btn" onclick="openOverlay('setup')" title="Basic settings">⚙️</button>
       </div>
     </header>
 
-    <div class="grid">
-      <section class="card">
-        <p class="section-title">Steuerung</p>
-        <div id="joy-container"></div>
-      </section>
+    <!-- ================= MANUAL CONTROL (open by default) ================= -->
+    <details class="section" open>
+      <summary>Manual Control</summary>
+      <div class="section-body">
 
-      <section class="card">
-        <p class="section-title">Telemetrie</p>
-        <div class="tele">
-          <div class="kv"><div class="k">RPM</div><div class="v" id="rpm">–</div></div>
-          <div class="kv"><div class="k">Safety</div><div class="v" id="safety">–</div></div>
-
-          <div class="kv"><div class="k">Target Speed</div><div class="v" id="tSpeed">0</div></div>
-          <div class="kv"><div class="k">Target Steer</div><div class="v" id="tSteer">0</div></div>
-
-          <div class="kv"><div class="k">Motor (A)</div><div class="v" id="cMotor">0.00</div></div>
-          <div class="kv"><div class="k">System (A)</div><div class="v" id="cSystem">0.00</div></div>
-
-          <div class="kv"><div class="k">Wegstrecke (m)</div><div class="v" id="distance">0.00</div></div>
-          <div class="kv"><div class="k">Verbrauch (mAh)</div><div class="v" id="consumption">0.00</div></div>
-
-          <div class="kv"><div class="k">Lives</div><div class="v" id="lives">–</div></div>
-          <div class="kv"><div class="k">Output Speed</div><div class="v" id="oSpeed">0</div></div>
+        <p class="sub-title">Drive a distance</p>
+        <div class="form-row">
+          <label for="driveDist">Distance (m)</label>
+          <input type="number" id="driveDist" min="0" step="0.1" value="1.0">
+          <button class="btn primary" onclick="cmdDrive()">Drive</button>
         </div>
-      </section>
-    </div>
 
-    <footer>HAWK Fakultät Ingenieurwissenschaften und Gesundheit</footer>
+        <p class="sub-title">Turn</p>
+        <div class="form-row">
+          <label for="turnAngle">Angle (°)</label>
+          <input type="number" id="turnAngle" min="0" max="180" step="5" value="90">
+          <select id="turnDir">
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+          </select>
+          <button class="btn primary" onclick="cmdTurn()">Turn</button>
+        </div>
+
+        <p class="sub-title">Jaw</p>
+        <div class="form-row">
+          <button class="btn" id="jawBtn" onclick="toggleJaw()">Open jaw</button>
+        </div>
+
+        <p class="sub-title">Joystick</p>
+        <div id="joy-container"></div>
+
+      </div>
+    </details>
+
+    <!-- ================= AUTO-NAVIGATION TELEMETRY ================= -->
+    <details class="section">
+      <summary>Auto-Navigation</summary>
+      <div class="section-body">
+
+        <div class="form-row">
+          <button class="btn" id="autoBtn" onclick="toggleAuto()">Enable automatic navigation</button>
+        </div>
+
+        <div class="tele">
+          <div class="kv"><div class="k">ToF front (mm)</div><div class="v" id="tofFront">–</div></div>
+          <div class="kv"><div class="k">ToF left (mm)</div><div class="v" id="tofLeft">–</div></div>
+          <div class="kv"><div class="k">ToF right (mm)</div><div class="v" id="tofRight">–</div></div>
+          <div class="kv"><div class="k">Ground color</div><div class="v"><span class="color-swatch" id="groundSwatch"></span><span id="groundColor">–</span></div></div>
+          <div class="kv"><div class="k">Navigation mode</div><div class="v" id="navMode">MANUAL</div></div>
+        </div>
+
+      </div>
+    </details>
+
+    <!-- ================= ADDITIONAL TELEMETRY (placeholder) ================= -->
+    <details class="section">
+      <summary>Additional Telemetry</summary>
+      <div class="section-body">
+        <div class="placeholder">
+          Graphs for brightness, current, voltage, power, temperature,
+          traveled distance and side distances L/R will appear here.
+        </div>
+      </div>
+    </details>
+
+    <footer>HAWK Faculty of Engineering and Health</footer>
   </div>
 
+  <!-- Kill switch — always on screen -->
+  <button id="killBtn" onclick="killSwitch()">⛔ STOP</button>
+
+  <!-- Bottom status bar — always visible -->
+  <div class="statusbar">
+    <div class="kv"><div class="k">RPM</div><div class="v" id="rpm">–</div></div>
+    <div class="kv"><div class="k">Target Steer</div><div class="v" id="tSteer">0</div></div>
+    <div class="kv"><div class="k">Output Speed</div><div class="v" id="oSpeed">0</div></div>
+    <div class="kv"><div class="k">Safety</div><div class="v" id="safety">–</div></div>
+  </div>
+
+  <!-- ================= SETUP OVERLAY ================= -->
   <div id="ov-setup" class="overlay hidden">
     <div class="overlay-content">
       <div class="overlay-header">
-        <h2>⚙️ Fahrwerk Setup</h2>
+        <h2>⚙️ Chassis Setup</h2>
         <button onclick="closeOverlays()" class="close-btn">×</button>
       </div>
 
-      <h3 style="font-size:12px; color:var(--accent2); text-transform:uppercase; border-bottom:1px solid #334155; margin-bottom:15px;">Antrieb (Software)</h3>
+      <h3 style="font-size:12px; color:var(--accent2); text-transform:uppercase; border-bottom:1px solid #334155; margin-bottom:15px;">Drive (software)</h3>
       <div class="slider-row">
-        <label>Drosselung (Max Speed) <span style="color:var(--accent2)"><b id="d-spd">100</b>%</span></label>
+        <label>Throttle limit (max speed) <span style="color:var(--accent2)"><b id="d-spd">100</b>%</span></label>
         <input type="range" class="sl-speed" min="10" max="100" value="100" oninput="setSpeedLimit(this.value)">
       </div>
 
-      <h3 style="font-size:12px; color:var(--warn); text-transform:uppercase; border-bottom:1px solid #334155; margin:25px 0 15px;">Lenkung (Hardware)</h3>
+      <h3 style="font-size:12px; color:var(--warn); text-transform:uppercase; border-bottom:1px solid #334155; margin:25px 0 15px;">Steering (hardware)</h3>
       <div class="slider-row">
-        <label>Anschlag Links (Min) <span style="color:var(--warn)"><b id="d-min">-90</b>°</span></label>
+        <label>Left stop (min) <span style="color:var(--warn)"><b id="d-min">-90</b>°</span></label>
         <input type="range" class="sl-hw" min="-90" max="0" value="-90" oninput="setSteer('min', this.value)">
       </div>
 
       <div class="slider-row">
-        <label>Anschlag Rechts (Max) <span style="color:var(--warn)"><b id="d-max">90</b>°</span></label>
+        <label>Right stop (max) <span style="color:var(--warn)"><b id="d-max">90</b>°</span></label>
         <input type="range" class="sl-hw" min="0" max="90" value="90" oninput="setSteer('max', this.value)">
       </div>
 
       <div class="slider-row">
-        <label>Trimmung (Geradeaus) <span style="color:var(--warn)"><b id="d-trim">0</b>°</span></label>
+        <label>Trim (straight ahead) <span style="color:var(--warn)"><b id="d-trim">0</b>°</span></label>
         <input type="range" class="sl-hw" min="-20" max="20" value="0" oninput="setSteer('trim', this.value)">
       </div>
 
       <p style="font-size:11px; color:var(--muted); text-align:center;">
-        Lenkungs-Werte werden direkt an den Controller gesendet.
+        Steering values are sent directly to the controller.
       </p>
     </div>
   </div>
 
-  <div id="ov-extra" class="overlay hidden">
-    <div class="overlay-content">
-      <div class="overlay-header">
-        <h2>🤖 Erweiterungen</h2>
-        <button onclick="closeOverlays()" class="close-btn">×</button>
-      </div>
-
-      <div class="toggle-switch" id="auto-switch" onclick="toggleAuto()">
-        <div class="knob"></div>
-        <span class="label">MANUAL</span>
-      </div>
-
-      <h3 style="font-size:12px; color:var(--accent); text-transform:uppercase; border-bottom:1px solid #334155; margin-bottom:15px;">Servos / Greifarm</h3>
-
-      <div class="slider-row">
-        <label>Servo 1 <span id="val-s1">90</span></label>
-        <input type="range" class="sl-servo" min="0" max="180" value="90" oninput="onArmInput('s1', this.value)">
-      </div>
-
-      <div class="slider-row">
-        <label>Servo 2 <span id="val-s2">90</span></label>
-        <input type="range" class="sl-servo" min="0" max="180" value="90" oninput="onArmInput('s2', this.value)">
-      </div>
-
-      <div class="slider-row">
-        <label>Servo 3 <span id="val-s3">90</span></label>
-        <input type="range" class="sl-servo" min="0" max="180" value="90" oninput="onArmInput('s3', this.value)">
-      </div>
-
-      <h3 style="font-size:12px; color:#fff; text-transform:uppercase; border-bottom:1px solid #334155; margin:25px 0 15px;">Sonderfunktionen</h3>
-      <div class="btn-row">
-        <button onclick="triggerFunc(1)">Aktion A</button>
-        <button onclick="triggerFunc(2)">Aktion B</button>
-      </div>
-    </div>
-  </div>
-
   <script>
-    // --- KONFIGURATION & STATE ---
+    // --- CONFIGURATION & STATE ---
     const CFG = {
-      // Steuer-Heartbeat beim Fahren/Lenken
+      // Control heartbeat while driving/steering
       heartbeatMs: 120,
 
-      // Telemetrie im Stand
+      // Telemetry while idle
       telemetryMsIdle: 500,
 
-      // Telemetrie während Fahrt/Lenkung bewusst langsamer,
-      // damit /control Vorrang bekommt
+      // Telemetry deliberately slower while driving,
+      // so /control takes priority
       telemetryMsDriving: 1200,
 
-      // Mindestabstand zwischen zwei Control-Requests
+      // Minimum gap between two control requests
       minControlGapMs: 45
     };
 
@@ -534,7 +567,7 @@
       needsUpdate: false
     };
 
-    // Default Config, wird bei Start aus localStorage überschrieben
+    // Default config, overwritten from localStorage on startup
     const CONF = {
       speedLim: 100,
       stMin: -90,
@@ -543,7 +576,7 @@
     };
 
     // --- INIT ---
-    // Lädt gespeicherte Einstellungen, damit Studierende nicht jedes Mal neu kalibrieren müssen
+    // Loads saved settings so students don't have to recalibrate every time
     (function init() {
       const ls = localStorage;
 
@@ -572,7 +605,7 @@
     function updateUIVal(id, val) {
       document.getElementById(id).innerText = val;
 
-      // Finde Input neben dem Label und setze Value
+      // Find the input next to the label and set its value
       const lbl = document.getElementById(id).parentElement;
       const inp = lbl.nextElementSibling;
 
@@ -581,7 +614,7 @@
       }
     }
 
-    // --- MENÜ STEUERUNG ---
+    // --- MENU CONTROL ---
     function openOverlay(id) {
       closeOverlays();
       document.getElementById('ov-' + id).classList.remove('hidden');
@@ -591,7 +624,7 @@
       document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden'));
     }
 
-    // --- LOGIK: SETUP ---
+    // --- LOGIC: SETUP ---
     function setSpeedLimit(val) {
       CONF.speedLim = parseInt(val);
       document.getElementById('d-spd').innerText = val;
@@ -622,7 +655,7 @@
       document.getElementById('d-' + key).innerText = val;
       localStorage.setItem('h_st_' + key, val);
 
-      // An Server senden, gedrosselt auf 200 ms
+      // Send to server, throttled to 200 ms
       if (stTimer) {
         clearTimeout(stTimer);
       }
@@ -632,44 +665,76 @@
       }, 200);
     }
 
-    // --- LOGIK: EXTRAS ---
-    let armTimer = null;
+    // --- LOGIC: MANUAL CONTROL COMMANDS ---
+    // Backend logic follows later in hipe.py; the UI already sends
+    // the commands via the existing /aux channel.
 
-    function onArmInput(part, value) {
-      document.getElementById('val-' + part).innerText = value;
+    function cmdDrive() {
+      const dist = parseFloat(document.getElementById('driveDist').value);
 
-      if (armTimer) {
+      if (isNaN(dist) || dist <= 0) {
         return;
       }
 
-      armTimer = setTimeout(() => {
-        sendAux('arm', part + ':' + value);
-        armTimer = null;
-      }, 100);
+      sendAux('drive_dist', dist);
     }
 
+    function cmdTurn() {
+      const angle = parseInt(document.getElementById('turnAngle').value);
+      const dir = document.getElementById('turnDir').value;
+
+      if (isNaN(angle) || angle <= 0) {
+        return;
+      }
+
+      sendAux('turn', dir + ':' + angle);
+    }
+
+    let jawOpen = false;
+
+    function toggleJaw() {
+      jawOpen = !jawOpen;
+
+      const btn = document.getElementById('jawBtn');
+      btn.textContent = jawOpen ? 'Close jaw' : 'Open jaw';
+      btn.classList.toggle('toggled', jawOpen);
+
+      sendAux('jaw', jawOpen ? 'open' : 'close');
+    }
+
+    // --- LOGIC: AUTO NAVIGATION ---
     let autoMode = false;
 
     function toggleAuto() {
       autoMode = !autoMode;
-
-      const sw = document.getElementById('auto-switch');
-      const lbl = sw.querySelector('.label');
-
-      if (autoMode) {
-        sw.classList.add('active');
-        lbl.textContent = 'AUTO AKTIV';
-        sendAux('mode', 'auto');
-      } else {
-        sw.classList.remove('active');
-        lbl.textContent = 'MANUAL';
-        sendAux('mode', 'manual');
-      }
+      applyAutoUI();
+      sendAux('mode', autoMode ? 'auto' : 'manual');
     }
 
-    function triggerFunc(id) {
-      console.log('Trigger: ' + id);
-      sendAux('trigger', id);
+    function applyAutoUI() {
+      const btn = document.getElementById('autoBtn');
+      btn.textContent = autoMode ? 'Disable automatic navigation' : 'Enable automatic navigation';
+      btn.classList.toggle('toggled', autoMode);
+      document.getElementById('navMode').textContent = autoMode ? 'AUTO' : 'MANUAL';
+    }
+
+    // --- LOGIC: KILL SWITCH ---
+    // Must immediately shut down automatic control and engine output.
+    function killSwitch() {
+      // Locally zero everything and leave auto mode
+      state.speed = 0;
+      state.steer = 0;
+      state.needsUpdate = true;
+
+      if (autoMode) {
+        autoMode = false;
+        applyAutoUI();
+      }
+
+      // Notify the backend (dedicated command + safe fallbacks)
+      sendAux('kill', '1');
+      sendAux('mode', 'manual');
+      fetch('/control?speed=0&steer=0', {cache:'no-store'}).catch(() => {});
     }
 
     // --- JOYSTICK ENGINE ---
@@ -688,20 +753,19 @@
 
     manager.on('move', (evt, data) => {
       //const dist = Math.min(data.distance / 75, 1.0);
-      const dist = Math.min(data.distance / 65, 1.0); //direktere Lenkung
+      const dist = Math.min(data.distance / 65, 1.0); // more direct steering
       const angle = data.angle.radian;
 
       let s = Math.round(Math.sin(angle) * dist * 100);
       let t = Math.round(Math.cos(angle) * dist * 100);
 
-      // Client-seitiges Speed-Limit
+      // Client-side speed limit
       const factor = CONF.speedLim / 100.0;
       s = Math.round(s * factor);
 
       state.speed = Math.max(-100, Math.min(100, s));
       state.steer = Math.max(-100, Math.min(100, t));
 
-      document.getElementById('tSpeed').textContent = state.speed;
       document.getElementById('tSteer').textContent = state.steer;
 
       state.needsUpdate = true;
@@ -711,22 +775,23 @@
       state.speed = 0;
       state.steer = 0;
 
-      document.getElementById('tSpeed').textContent = 0;
       document.getElementById('tSteer').textContent = 0;
 
       state.needsUpdate = true;
     });
 
-    // --- UI-REFERENZEN ---
+    // --- UI REFERENCES ---
     const ui = {
       rpm: document.getElementById('rpm'),
       safe: document.getElementById('safety'),
-      lives: document.getElementById('lives'),
       oSpeed: document.getElementById('oSpeed'),
-      cMotor: document.getElementById('cMotor'),
-      cSystem: document.getElementById('cSystem'),
-      distance: document.getElementById('distance'),
-      consumption: document.getElementById('consumption'),
+      tSteer: document.getElementById('tSteer'),
+      tofFront: document.getElementById('tofFront'),
+      tofLeft: document.getElementById('tofLeft'),
+      tofRight: document.getElementById('tofRight'),
+      groundColor: document.getElementById('groundColor'),
+      groundSwatch: document.getElementById('groundSwatch'),
+      navMode: document.getElementById('navMode'),
       body: document.getElementById('bodyEl'),
       chip: document.getElementById('netChip')
     };
@@ -736,8 +801,8 @@
       const now = Date.now();
       const isDriving = (state.speed !== 0 || state.steer !== 0);
 
-      // 1. Steuerung hat absolute Priorität.
-      // Neue Joystick-Werte oder Heartbeat beim Fahren/Lenken werden bevorzugt gesendet.
+      // 1. Control has absolute priority.
+      // New joystick values or the driving heartbeat are sent first.
       if (
         !state.controlBusy &&
         (
@@ -752,8 +817,8 @@
         return;
       }
 
-      // 2. Telemetrie nur dann senden, wenn gerade kein Control-Request läuft
-      // und kein neuer Steuerwert wartet.
+      // 2. Only send telemetry when no control request is running
+      // and no new control value is waiting.
       const teleInterval = isDriving ? CFG.telemetryMsDriving : CFG.telemetryMsIdle;
 
       if (
@@ -793,11 +858,11 @@
         .then(d => {
           setNet(true);
 
-          // Basis-Werte
+          // Basic values
           ui.rpm.textContent = d.rpm ?? 0;
           ui.oSpeed.textContent = d.speed_safe ?? 0;
 
-          // Output Speed farblich markieren, falls Safety eingreift
+          // Color-mark output speed if safety intervenes
           const targetSpeed = Number(d.speed_target ?? state.speed ?? 0);
           const safeSpeed = Number(d.speed_safe ?? 0);
 
@@ -807,35 +872,12 @@
             ui.oSpeed.className = 'v mid';
           }
 
-          // Server-Targets anzeigen, falls vorhanden
-          if (typeof d.speed_target === 'number') {
-            document.getElementById('tSpeed').textContent = d.speed_target;
-          }
-
+          // Show server targets if available
           if (typeof d.steer_target === 'number') {
-            document.getElementById('tSteer').textContent = d.steer_target;
+            ui.tSteer.textContent = d.steer_target;
           }
 
-          // Lives farbcodiert anzeigen
-          if (typeof d.lives === 'number') {
-            let lcls = 'v';
-
-            if (d.lives <= 0) {
-              lcls += ' bad';
-            } else if (d.lives <= 3) {
-              lcls += ' mid';
-            } else {
-              lcls += ' ok';
-            }
-
-            ui.lives.className = lcls;
-            ui.lives.textContent = d.lives;
-          } else {
-            ui.lives.className = 'v';
-            ui.lives.textContent = '–';
-          }
-
-          // Safety Status + DEAD-Pulsieren
+          // Safety status + DEAD pulsing
           const safetyText = d.safety ?? d.safety_raw ?? '-';
           const safetyRaw = d.safety_raw ?? d.safety ?? '-';
           const isDead = safetyRaw === 'DEAD';
@@ -861,24 +903,28 @@
           document.body.classList.toggle('blink', isDead);
           ui.chip.classList.toggle('blink', isDead);
 
-          // Ströme
-          if (d.current) {
-            if (typeof d.current.motor === 'number') {
-              ui.cMotor.textContent = d.current.motor.toFixed(2);
-            }
-
-            if (typeof d.current.system === 'number') {
-              ui.cSystem.textContent = d.current.system.toFixed(2);
-            }
+          // --- Auto-navigation telemetry (backend fields follow later) ---
+          // Expected: d.tof = {front: mm, left: mm, right: mm}
+          if (d.tof) {
+            ui.tofFront.textContent = (typeof d.tof.front === 'number') ? d.tof.front : '–';
+            ui.tofLeft.textContent  = (typeof d.tof.left  === 'number') ? d.tof.left  : '–';
+            ui.tofRight.textContent = (typeof d.tof.right === 'number') ? d.tof.right : '–';
           }
 
-          // Wegstrecke und Verbrauch
-          if (typeof d.distance === 'number') {
-            ui.distance.textContent = d.distance.toFixed(2);
+          // Expected: d.ground_color = name (e.g. "red") or "#rrggbb"
+          if (typeof d.ground_color === 'string') {
+            ui.groundColor.textContent = d.ground_color;
+            ui.groundSwatch.style.background = d.ground_color;
           }
 
-          if (typeof d.consumption === 'number') {
-            ui.consumption.textContent = d.consumption.toFixed(2);
+          // Expected: d.nav_mode = "AUTO" | "MANUAL"
+          if (typeof d.nav_mode === 'string') {
+            ui.navMode.textContent = d.nav_mode;
+            autoMode = (d.nav_mode === 'AUTO');
+
+            const btn = document.getElementById('autoBtn');
+            btn.textContent = autoMode ? 'Disable automatic navigation' : 'Enable automatic navigation';
+            btn.classList.toggle('toggled', autoMode);
           }
         })
         .catch(() => setNet(false))
@@ -891,7 +937,7 @@
 
     function setNet(ok) {
       if (ok) {
-        ui.chip.textContent = 'verbunden';
+        ui.chip.textContent = 'connected';
         ui.chip.style.background = 'var(--accent)';
 
         if (offTimer) {
@@ -899,11 +945,11 @@
         }
 
         offTimer = setTimeout(() => {
-          ui.chip.textContent = 'still...';
+          ui.chip.textContent = 'quiet...';
           ui.chip.style.background = 'var(--warn)';
         }, 3000);
       } else {
-        ui.chip.textContent = 'getrennt';
+        ui.chip.textContent = 'disconnected';
         ui.chip.style.background = 'var(--danger)';
       }
     }
