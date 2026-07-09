@@ -1,9 +1,7 @@
 # servo_test.py
 # Standalone, on-demand servo test (independent of hipe.py).
-# move("jaw"/"lock", pct, duration_ms) drives that servo, waits, then stops.
-# pct: -100..+100, mapped onto the full 700-2300us pulse range around the
-# 1500us stop point. Positive = CCW (us>1500), negative = CW (us<1500),
-# per FS90R datasheet. Magnitude = "signal strength" (further from neutral).
+# jaw: locked-in open/close function (calibrated values below).
+# lock: still under test via move("lock", pct, duration_ms).
 
 from machine import Pin, PWM
 import time
@@ -45,8 +43,29 @@ servos = {
     "lock": ContServo(8),   # GP8
 }
 
+# #############################################################################
+# ##  LOCKED-IN JAW CALIBRATION — confirmed working with/without ball load,  ##
+# ##  no stalling/buzzing, clean "clonk" on close.                           ##
+# #############################################################################
+JAW_OPEN_PCT    = +40
+JAW_OPEN_MS     = 1000
+JAW_CLOSE_PCT   = -35
+JAW_CLOSE_MS    = 1200
+# #############################################################################
+
+def jaw_open():
+    print("[jaw] OPEN  pct=%+d for %dms" % (JAW_OPEN_PCT, JAW_OPEN_MS))
+    servos["jaw"].run(JAW_OPEN_PCT, JAW_OPEN_MS)
+    print("[jaw] stopped")
+
+def jaw_close():
+    print("[jaw] CLOSE pct=%+d for %dms" % (JAW_CLOSE_PCT, JAW_CLOSE_MS))
+    servos["jaw"].run(JAW_CLOSE_PCT, JAW_CLOSE_MS)
+    print("[jaw] stopped")
+
 def move(target, pct, duration_ms):
-    """REPL command, e.g.: move("jaw", 30, 200)"""
+    """Free-form REPL command for the still-untested lock servo,
+    e.g.: move("lock", 40, 300)"""
     if target not in servos:
         print("Unknown target:", target, "- use 'jaw' or 'lock'")
         return
