@@ -54,7 +54,7 @@ Webserver) und betreibt eine **nicht-blockierende** Hauptschleife. Die
 Weboberfläche liefert Sollwerte (Speed/Steer) und Heartbeats; die ``SafetyManager``-Logik begrenzt und schützt den Antrieb.
 
 Zusätzlich werden über den ``/aux``-Kanal Konfigurationsbefehle (Lenkungstrimmung)
-und Steuerbefehle für Erweiterungen (Autopilot, Greifarm) verarbeitet.
+und Steuerbefehle für Erweiterungen (Autopilot, Greifarm, Distanzfahrt) verarbeitet.
 
 Examples:
 
@@ -95,6 +95,7 @@ class hipe:
         - Erfasst Telemetrie (Drehzahl, Ströme, Status).
         - Erzwingt Sicherheit (Stromlimits, Totmannschaltung, Stall-Erkennung).
         - Verarbeitet Erweiterungsbefehle (Aux) für Setup und Autonomie.
+        - Führt Distanz-Manöver (drive_dist) nicht-blockierend aus.
         - Zeigt Aktivität per LED-Muster.
 
     Attributes:
@@ -114,6 +115,7 @@ class hipe:
         _target_speed (float): Zielgeschwindigkeit in % (−100..+100).
         _target_steer (float): Ziellenkung in % (−100..+100).
         _safe_speed (int): Von Safety begrenzter %-Wert für den Antrieb.
+        _dist_m (float): Zurückgelegte Strecke in m (RPM-Integration, vorzeichenbehaftet).
     """
 
     # -------------------------------------------------------------------------
@@ -158,13 +160,38 @@ class hipe:
         # ---------------------------------------------------------------------
         # HARDWARE: ANTRIEB (MOTOR + ENCODER)
         # ---------------------------------------------------------------------
-        self.drive = DriveController(
-            # --- Kinematik (für Telemetrie) ---
-            pulses_per_rev=16,     # Flanken A-rising pro Motorumdrehung (laut Datenblatt)
-            gear_ratio=6.3,        # Getriebe Motorwelle:Ausgangswelle (laut Datenblatt)
-            wheel_diameter=0.02,    # Raddurchmesser in m
-            invert_dir=False        # Motordrehrichtung umkehren
-        )
+        # Kinematik zentral abgelegt, damit die Odometrie dieselben Werte
+        # nutzt wie der DriveController.
+        self.kin = {
+            "pulses_per_rev": 16,    # Flanken A-rising pro Motorumdrehung (laut Datenblatt)
+            "gear_ratio": 6.3,       # Getriebe Motorwelle:Ausgangswelle (laut Datenblatt)
+            "wheel_diameter": 0.02,  # Raddurchmesser in m
+            "invert_dir": False,     # Motordrehrichtung umkehren
+        }
+        self.drive = DriveController(**self.kin)
+
+        # --- Odometrie (zurückgelegte Strecke via RPM-Integration) -----------
+        self._dist_m = 0.0
+        self._dist_last_ms = time.ticks_ms()
+        self._odo_dir = 1          # zuletzt kommandierte Richtung (+1/-1),
+                                   # gilt auch im Auslauf (safe_pct == 0)
+        self._last_rpm = 0.0       # Drehzahl aus dem letzten Loop-Tick
+
+        # NEU: --- Distanz-Manöver (drive_dist) --------------------------------
+        # Nicht-blockierende Zustandsmaschine: RUN -> COAST -> fertig.
+        # WICHTIG: nutzt Referenzwert + Delta, resettet den Odometer NICHT.
+        self.MAN_SPEED_PCT      = 40     # Fahrgeschwindigkeit in %
+        self.MAN_SPEED_SLOW_PCT = 25     # Kriechgang kurz vor dem Ziel
+        self.MAN_SLOW_ZONE_M    = 0.10   # Kriechgang-Zone vor dem Ziel (m)
+        self.MAN_TIMEOUT_MS     = 15000  # Abbruch, falls Ziel nicht erreicht wird
+        self.MAN_COAST_MAX_MS   = 2000   # max. Wartezeit auf Stillstand
+        self._man_active   = False
+        self._man_state    = "RUN"       # "RUN" | "COAST"
+        self._man_ref_m    = 0.0         # Odometer-Stand bei Manöverstart
+        self._man_target_m = 0.0         # Soll-Distanz (Betrag)
+        self._man_dir      = 1           # +1 vorwärts, -1 rückwärts
+        self._man_start_ms = 0
+        self._man_coast_ms = 0
 
         # ---------------------------------------------------------------------
         # HARDWARE: LENKUNG (SERVO)
@@ -258,6 +285,9 @@ class hipe:
         Klemmt Werte in die UI-Spanne (−100..+100) und aktualisiert den
         Heartbeat-Zeitstempel (Totmannschaltung).
 
+        NEU: Bricht ein laufendes Distanz-Manöver ab — manuelle Eingabe
+        (Joystick oder Kill-Fallback) hat immer Vorrang.
+
         Args:
             spd (float | int): gewünschte Geschwindigkeit in % (−100..+100).
             st  (float | int): gewünschte Lenkung in % (−100..+100).
@@ -265,6 +295,10 @@ class hipe:
         Returns:
             None
         """
+        # NEU: Manuelle Übernahme beendet das Manöver sofort
+        if self._man_active:
+            self._maneuver_cancel("manuelle Eingabe")
+
         # Werte „einfangen“ und begrenzen
         if spd > 100:
             spd = 100
@@ -287,11 +321,11 @@ class hipe:
 
         Wird über den Endpunkt ``/aux?type=...&data=...`` aufgerufen.
         Dient zur Laufzeit-Konfiguration (Lenkung) und Steuerung von
-        Zusatzmodulen (Autopilot, Greifarm).
+        Zusatzmodulen (Autopilot, Greifarm, Distanzfahrt).
 
         Args:
-            type (str): Befehlstyp (z. B. "steer_config", "mode", "trigger").
-            data (str): Nutzdaten (z. B. "-90,90,0" oder "auto").
+            type (str): Befehlstyp (z. B. "steer_config", "mode", "drive_dist").
+            data (str): Nutzdaten (z. B. "-90,90,0", "auto" oder "1.0").
         """
         # Debugging
         print(f"[AUX] Type: {type} | Data: {data}")
@@ -314,6 +348,7 @@ class hipe:
         # --- B: MODUS WECHSEL (Autopilot) ---
         elif type == "mode":
             if data == "auto":
+                self._maneuver_cancel("Moduswechsel AUTO")  # NEU
                 self.mode = "AUTO"
                 print("-> Modus: AUTONOM")
             else:
@@ -321,8 +356,43 @@ class hipe:
                 self._target_speed = 0  # Sicherheitsstopp
                 print("-> Modus: MANUELL")
 
+        # NEU: --- D: DISTANZ-MANÖVER ---
+        # data = Distanz in m; negativ = rückwärts. Nutzt Referenz + Delta,
+        # der Gesamt-Odometer bleibt unangetastet.
+        elif type == "drive_dist":
+            try:
+                dist = float(data)
+            except (ValueError, TypeError):
+                print("-> drive_dist: ungültige Distanz:", data)
+                return
+            if dist == 0:
+                print("-> drive_dist: Distanz 0 ignoriert.")
+                return
+            if self.mode != "MANUAL":
+                print("-> drive_dist: nur im MANUAL-Modus möglich.")
+                return
+            self._maneuver_start(abs(dist), 1 if dist > 0 else -1)
+
+        # NEU: --- E: DREHUNG (noch nicht implementiert) ---
+        elif type == "turn":
+            print("-> turn: noch nicht implementiert "
+                  "(benötigt kalibrierte Distanz + Lenkgeometrie).")
+
+        # NEU: --- F: KILL-SWITCH ---
+        elif type == "kill":
+            self._maneuver_cancel("Kill-Switch")
+            self.mode = "MANUAL"
+            self._target_speed = 0.0
+            print("-> KILL: Antrieb gestoppt, Modus MANUELL.")
+
+        # NEU: --- G: ODOMETER ZURÜCKSETZEN ---
+        # Manueller Reset für Kalibrierfahrten und Trial-Start.
+        elif type == "dist_reset":
+            self.reset_distance()
+            print("-> Odometer auf 0 gesetzt.")
+
         # --- C: GREIFARM & TRIGGER (Weiterleitung an Senior) ---
-        elif (type == "arm" or type == "trigger"):
+        elif (type == "arm" or type == "trigger" or type == "jaw"):
             # Wenn das Senior-Modul geladen ist, wird es weitergeleitet
             if self.senior:
                 try:
@@ -348,6 +418,136 @@ class hipe:
             pass
 
     # -------------------------------------------------------------------------
+    # ODOMETRIE
+    # -------------------------------------------------------------------------
+
+    def get_distance_m(self) -> float:
+        """Zurückgelegte Strecke in m seit Start bzw. letztem Reset.
+
+        Vorzeichenbehaftet: Rückwärtsfahrt reduziert den Wert. Die Richtung
+        wird aus der zuletzt kommandierten Fahrtrichtung abgeleitet und gilt
+        auch im Auslauf (Motor aus, Rad dreht noch).
+        """
+        return self._dist_m
+
+    def reset_distance(self) -> None:
+        """Odometer nullen (Kalibrierfahrt / Trial-Start).
+
+        Nur manuell via /aux aufrufen. Manöver (drive_dist) nutzen
+        stattdessen Referenzwert + Delta.
+        """
+        self._dist_m = 0.0
+        self._dist_last_ms = time.ticks_ms()
+
+    def _update_odometry(self, rpm, safe_pct, now) -> None:
+        """Integriert die Drehzahl über die Loop-Zeit zu einer Strecke.
+
+        Annahme: get_rpm() liefert die Drehzahl der ABTRIEBSwelle (Rad),
+        da gear_ratio bereits im DriveController verrechnet wird.
+        s += (rpm/60) * dt * pi * d_Rad
+
+        Die Richtung wird gemerkt: bei safe_pct == 0 (Auslauf) zählt die
+        zuletzt kommandierte Richtung weiter, damit z. B. Rückwärts-Auslauf
+        nicht fälschlich positiv integriert wird.
+
+        Args:
+            rpm (float): aktuelle Drehzahl (Betrag).
+            safe_pct (int): Safety-begrenzter Sollwert; aktualisiert die Richtung.
+            now (int): aktueller ticks_ms-Zeitstempel.
+        """
+        dt_odo = time.ticks_diff(now, self._dist_last_ms)
+        self._dist_last_ms = now
+
+        # Richtung nur bei aktivem Kommando aktualisieren
+        if safe_pct > 0:
+            self._odo_dir = 1
+        elif safe_pct < 0:
+            self._odo_dir = -1
+
+        # Absurde Lücken (Pause, Blockade, erste Iteration) nicht integrieren
+        if not (0 < dt_odo < 500):
+            return
+
+        step = (abs(rpm) / 60.0) * (dt_odo / 1000.0) \
+               * 3.141592653589793 * self.kin["wheel_diameter"]
+        self._dist_m += self._odo_dir * step
+
+    # -------------------------------------------------------------------------
+    # NEU: DISTANZ-MANÖVER (drive_dist)
+    # -------------------------------------------------------------------------
+
+    def _maneuver_start(self, target_m, direction) -> None:
+        """Startet ein Distanz-Manöver relativ zum aktuellen Odometer-Stand.
+
+        Args:
+            target_m (float): zu fahrende Distanz in m (Betrag).
+            direction (int): +1 vorwärts, -1 rückwärts.
+        """
+        self._man_ref_m    = self._dist_m   # Referenz merken, NICHT resetten
+        self._man_target_m = target_m
+        self._man_dir      = direction
+        self._man_start_ms = time.ticks_ms()
+        self._man_state    = "RUN"
+        self._man_active   = True
+        print("[MAN] drive_dist Start: Soll=%.3f m, Richtung=%s, Odometer=%.3f m"
+              % (target_m, "vor" if direction > 0 else "zurueck", self._dist_m))
+
+    def _maneuver_cancel(self, reason) -> None:
+        """Bricht ein laufendes Manöver ab und stoppt den Antrieb."""
+        if not self._man_active:
+            return
+        self._man_active = False
+        self._target_speed = 0.0
+        delta = abs(self._dist_m - self._man_ref_m)
+        print("[MAN] Abbruch (%s) bei %.3f von %.3f m."
+              % (reason, delta, self._man_target_m))
+
+    def _maneuver_tick(self, now) -> None:
+        """Ein Schritt der Manöver-Zustandsmaschine (nicht-blockierend).
+
+        RUN:   fahren, in der Slow-Zone Kriechgang, am Ziel Motor aus.
+        COAST: warten bis Stillstand, dann Endstand inkl. Auslauf drucken.
+
+        Args:
+            now (int): aktueller ticks_ms-Zeitstempel.
+        """
+        delta = abs(self._dist_m - self._man_ref_m)
+
+        if self._man_state == "RUN":
+            remaining = self._man_target_m - delta
+
+            # Ziel erreicht -> Motor aus, Auslauf beobachten
+            if remaining <= 0:
+                self._target_speed = 0.0
+                self._man_state = "COAST"
+                self._man_coast_ms = now
+                print("[MAN] Abschaltpunkt: %.3f m nach %d ms."
+                      % (delta, time.ticks_diff(now, self._man_start_ms)))
+                return
+
+            # Watchdog: Ziel nicht erreichbar (Blockade, Encoderausfall)
+            if time.ticks_diff(now, self._man_start_ms) > self.MAN_TIMEOUT_MS:
+                self._maneuver_cancel("Timeout")
+                return
+
+            # Fahren: Kriechgang in der Slow-Zone, sonst Normalgeschwindigkeit
+            pct = self.MAN_SPEED_SLOW_PCT if remaining <= self.MAN_SLOW_ZONE_M \
+                  else self.MAN_SPEED_PCT
+            self._target_speed = float(self._man_dir * pct)
+            self._target_steer = 0.0
+            # Heartbeat füttern, sonst greift die Totmannschaltung
+            self._last_heartbeat = now
+
+        elif self._man_state == "COAST":
+            self._target_speed = 0.0
+            stopped = abs(self._last_rpm) < 1.0
+            timed_out = time.ticks_diff(now, self._man_coast_ms) > self.MAN_COAST_MAX_MS
+            if stopped or timed_out:
+                self._man_active = False
+                print("[MAN] Endstand nach Auslauf: %.3f m (Soll %.3f m, Auslauf %.3f m)."
+                      % (delta, self._man_target_m, delta - self._man_target_m))
+
+    # -------------------------------------------------------------------------
     # TELEMETRIE
     # -------------------------------------------------------------------------
 
@@ -362,6 +562,7 @@ class hipe:
                 - ``current`` (dict): Mittelwerte der Ströme ``{"motor": A, "system": A}``.
                 - ``safety`` (str): Safety-Status (OK/LIMIT/STALL/TIMEOUT/DEAD).
                 - ``speed_safe`` (int): Von Safety begrenzter Wert in %.
+                - ``distance`` (float): Zurückgelegte Strecke in m (Odometrie).
                 - ``ts`` (int): Zeitstempel (ms).
                 - ``lives`` (int, optional): Restleben im Deathmatch-Modus.
         """
@@ -387,6 +588,7 @@ class hipe:
             "current": currents,
             "safety": getattr(self.safety, "status", "OK"),
             "speed_safe": self._safe_speed,
+            "distance": round(self._dist_m, 3),   # Odometrie fürs Frontend
             "ts": time.ticks_ms(),
         }
         if self.deathmatch_enabled:
@@ -407,10 +609,12 @@ class hipe:
 
             1. Webserver bedienen (max. 1 Anfrage).
             2. Autopilot (Senior) Logik ausführen (Überschreibt ggf. Manual).
+            2b. Distanz-Manöver (drive_dist) ausführen, falls aktiv.
             3. Stromfenster mitteln und cachen (~120 ms).
             4. Dead-Man: Bei altem Heartbeat → Zielgeschwindigkeit auf 0.
             5. Deathmatch: Leben/„DEAD“ prüfen und ggf. sperren.
             6. Safety anwenden → sicheren %-Wert berechnen.
+            6b. Odometrie: Drehzahl über Zeit zu Strecke integrieren.
             7. PWM (Antrieb) und Position (Lenkung) ausgeben.
             8. Takt einhalten (schlafen, falls Zeit übrig).
             9. LED-Muster je nach Client/Heartbeat.
@@ -460,6 +664,10 @@ class hipe:
             # -----------------------------------------------------------------
             now = time.ticks_ms()
 
+            # NEU: 2b) Distanz-Manöver (nur im MANUAL-Modus)
+            if self._man_active and self.mode == "MANUAL":
+                self._maneuver_tick(now)
+
             # 3) Strommessung periodisch auswerten
             if time.ticks_diff(now, self._last_adc) >= 120:
                 try:
@@ -498,6 +706,7 @@ class hipe:
                 rpm_for_safety = self.drive.get_rpm()
             except (AttributeError, RuntimeError, OSError):
                 rpm_for_safety = 0.0
+            self._last_rpm = rpm_for_safety   # NEU: für Manöver-COAST-Erkennung
 
             try:
                 m = self._cur_cache or self.current.read(window_ms=200, want=("avg",))
@@ -512,6 +721,9 @@ class hipe:
             except (ValueError, RuntimeError) as e:
                 print("safety.enforce failed:", e)
                 safe_pct, status = int(self._target_speed), "OK"
+
+            # 6b) Odometrie mit der frisch gelesenen Drehzahl aktualisieren
+            self._update_odometry(rpm_for_safety, safe_pct, now)
 
             # ruhiger log
             if (self._last_out["safe"] != safe_pct) or (self._last_out["safety"] != status):

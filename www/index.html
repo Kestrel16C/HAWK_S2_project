@@ -126,6 +126,33 @@
       padding:0 16px 16px;
     }
 
+    /* Nested sub-dropdown (e.g. joystick) */
+    details.sub{
+      border:1px solid rgba(255,255,255,0.06);
+      border-radius:12px;
+      margin-top:18px;
+      overflow:hidden;
+    }
+
+    details.sub > summary{
+      list-style:none;
+      cursor:pointer;
+      padding:12px 14px;
+      font-size:11px;
+      font-weight:700;
+      color:var(--accent);
+      text-transform:uppercase;
+      letter-spacing:1px;
+      display:flex;
+      justify-content:space-between;
+    }
+
+    details.sub > summary::-webkit-details-marker{ display:none; }
+    details.sub > summary::after{ content:'▸'; color:var(--muted); transition:transform 0.2s; }
+    details.sub[open] > summary::after{ transform:rotate(90deg); }
+
+    details.sub .sub-inner{ padding:0 12px 12px; }
+
     /* Form rows */
     .form-row{
       display:flex;
@@ -433,7 +460,7 @@
         <p class="sub-title">Drive a distance</p>
         <div class="form-row">
           <label for="driveDist">Distance (m)</label>
-          <input type="number" id="driveDist" min="0" step="0.1" value="1.0">
+          <input type="number" id="driveDist" step="0.1" value="1.0">
           <button class="btn primary" onclick="cmdDrive()">Drive</button>
         </div>
 
@@ -453,8 +480,14 @@
           <button class="btn" id="jawBtn" onclick="toggleJaw()">Open jaw</button>
         </div>
 
-        <p class="sub-title">Joystick</p>
-        <div id="joy-container"></div>
+        <!-- Joystick lives in its own sub-dropdown (closed by default,
+             lazy-initialized on first open) -->
+        <details class="sub" id="joySection">
+          <summary>Joystick</summary>
+          <div class="sub-inner">
+            <div id="joy-container"></div>
+          </div>
+        </details>
 
       </div>
     </details>
@@ -479,14 +512,20 @@
       </div>
     </details>
 
-    <!-- ================= ADDITIONAL TELEMETRY (placeholder) ================= -->
+    <!-- ================= ADDITIONAL TELEMETRY ================= -->
     <details class="section">
       <summary>Additional Telemetry</summary>
       <div class="section-body">
-        <div class="placeholder">
-          Graphs for brightness, current, voltage, power, temperature,
-          traveled distance and side distances L/R will appear here.
+
+        <div class="tele">
+          <div class="kv"><div class="k">Traveled distance (m)</div><div class="v" id="distance">0.00</div></div>
         </div>
+
+        <div class="placeholder">
+          Graphs for brightness, current, voltage, power, temperature
+          and side distances L/R will appear here.
+        </div>
+
       </div>
     </details>
 
@@ -666,13 +705,13 @@
     }
 
     // --- LOGIC: MANUAL CONTROL COMMANDS ---
-    // Backend logic follows later in hipe.py; the UI already sends
-    // the commands via the existing /aux channel.
 
     function cmdDrive() {
       const dist = parseFloat(document.getElementById('driveDist').value);
 
-      if (isNaN(dist) || dist <= 0) {
+      // Negative values = reverse (useful for calibration runs);
+      // only zero/NaN are rejected.
+      if (isNaN(dist) || dist === 0) {
         return;
       }
 
@@ -700,6 +739,14 @@
       btn.classList.toggle('toggled', jawOpen);
 
       sendAux('jaw', jawOpen ? 'open' : 'close');
+    }
+
+    // --- LOGIC: SENSOR CALIBRATION ---
+    // Manual odometer reset (calibration runs, trial start).
+    // NOTE: drive_dist/turn maneuvers do NOT reset the odometer;
+    // they use reference + delta in the firmware.
+    function resetDistance() {
+      sendAux('dist_reset', '1');
     }
 
     // --- LOGIC: AUTO NAVIGATION ---
@@ -737,47 +784,62 @@
       fetch('/control?speed=0&steer=0', {cache:'no-store'}).catch(() => {});
     }
 
-    // --- JOYSTICK ENGINE ---
-    const manager = nipplejs.create({
-      zone: document.getElementById('joy-container'),
-      mode: 'static',
-      position: {
-        left: '50%',
-        top: '50%'
-      },
-      color: '#38bdf8',
-      size: 160,
-      threshold: 0.1,
-      restOpacity: 0.8
-    });
+    // --- JOYSTICK ENGINE (lazy init: container has no size while
+    // the sub-dropdown is closed, so create on first open) ---
+    let joyManager = null;
 
-    manager.on('move', (evt, data) => {
-      //const dist = Math.min(data.distance / 75, 1.0);
-      const dist = Math.min(data.distance / 65, 1.0); // more direct steering
-      const angle = data.angle.radian;
+    function initJoystick() {
+      if (joyManager) {
+        return;
+      }
 
-      let s = Math.round(Math.sin(angle) * dist * 100);
-      let t = Math.round(Math.cos(angle) * dist * 100);
+      joyManager = nipplejs.create({
+        zone: document.getElementById('joy-container'),
+        mode: 'static',
+        position: {
+          left: '50%',
+          top: '50%'
+        },
+        color: '#38bdf8',
+        size: 160,
+        threshold: 0.1,
+        restOpacity: 0.8
+      });
 
-      // Client-side speed limit
-      const factor = CONF.speedLim / 100.0;
-      s = Math.round(s * factor);
+      joyManager.on('move', (evt, data) => {
+        //const dist = Math.min(data.distance / 75, 1.0);
+        const dist = Math.min(data.distance / 65, 1.0); // more direct steering
+        const angle = data.angle.radian;
 
-      state.speed = Math.max(-100, Math.min(100, s));
-      state.steer = Math.max(-100, Math.min(100, t));
+        let s = Math.round(Math.sin(angle) * dist * 100);
+        let t = Math.round(Math.cos(angle) * dist * 100);
 
-      document.getElementById('tSteer').textContent = state.steer;
+        // Client-side speed limit
+        const factor = CONF.speedLim / 100.0;
+        s = Math.round(s * factor);
 
-      state.needsUpdate = true;
-    });
+        state.speed = Math.max(-100, Math.min(100, s));
+        state.steer = Math.max(-100, Math.min(100, t));
 
-    manager.on('end', () => {
-      state.speed = 0;
-      state.steer = 0;
+        document.getElementById('tSteer').textContent = state.steer;
 
-      document.getElementById('tSteer').textContent = 0;
+        state.needsUpdate = true;
+      });
 
-      state.needsUpdate = true;
+      joyManager.on('end', () => {
+        state.speed = 0;
+        state.steer = 0;
+
+        document.getElementById('tSteer').textContent = 0;
+
+        state.needsUpdate = true;
+      });
+    }
+
+    document.getElementById('joySection').addEventListener('toggle', (e) => {
+      if (e.target.open) {
+        initJoystick();
+      }
     });
 
     // --- UI REFERENCES ---
@@ -792,6 +854,7 @@
       groundColor: document.getElementById('groundColor'),
       groundSwatch: document.getElementById('groundSwatch'),
       navMode: document.getElementById('navMode'),
+      distance: document.getElementById('distance'),
       body: document.getElementById('bodyEl'),
       chip: document.getElementById('netChip')
     };
@@ -902,6 +965,11 @@
 
           document.body.classList.toggle('blink', isDead);
           ui.chip.classList.toggle('blink', isDead);
+
+          // Traveled distance (odometry)
+          if (typeof d.distance === 'number') {
+            ui.distance.textContent = d.distance.toFixed(2);
+          }
 
           // --- Auto-navigation telemetry (backend fields follow later) ---
           // Expected: d.tof = {front: mm, left: mm, right: mm}
