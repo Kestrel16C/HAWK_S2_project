@@ -495,9 +495,10 @@
           <div id="joy-container"></div>
         </div>
 
-        <p class="sub-title">Jaw</p>
+        <p class="sub-title">Jaw &amp; Lock</p>
         <div class="form-row">
           <button class="btn" id="jawBtn" onclick="toggleJaw()">Open jaw</button>
+          <button class="btn" id="lockBtn" onclick="toggleLock()">Release lock</button>
         </div>
 
       </div>
@@ -773,6 +774,19 @@
       btn.classList.toggle('toggled', jawOpen);
 
       sendAux('jaw', jawOpen ? 'open' : 'close');
+    }
+
+    // Default state on boot: lock engaged (matches firmware assumption)
+    let lockEngaged = true;
+
+    function toggleLock() {
+      lockEngaged = !lockEngaged;
+
+      const btn = document.getElementById('lockBtn');
+      btn.textContent = lockEngaged ? 'Release lock' : 'Engage lock';
+      btn.classList.toggle('toggled', !lockEngaged);
+
+      sendAux('lock', lockEngaged ? 'engage' : 'release');
     }
 
     // --- LOGIC: SENSOR CALIBRATION ---
