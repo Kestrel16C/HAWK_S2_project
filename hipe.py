@@ -180,8 +180,8 @@ class hipe:
         # NEU: --- Distanz-Manöver (drive_dist) --------------------------------
         # Nicht-blockierende Zustandsmaschine: RUN -> COAST -> fertig.
         # WICHTIG: nutzt Referenzwert + Delta, resettet den Odometer NICHT.
-        self.MAN_SPEED_PCT      = 40     # Fahrgeschwindigkeit in %
-        self.MAN_SPEED_SLOW_PCT = 25     # Kriechgang kurz vor dem Ziel
+        self.MAN_SPEED_PCT      = 60     # Fahrgeschwindigkeit in %
+        self.MAN_SPEED_SLOW_PCT = 40     # Kriechgang kurz vor dem Ziel
         self.MAN_SLOW_ZONE_M    = 0.10   # Kriechgang-Zone vor dem Ziel (m)
         self.MAN_TIMEOUT_MS     = 15000  # Abbruch, falls Ziel nicht erreicht wird
         self.MAN_COAST_MAX_MS   = 2000   # max. Wartezeit auf Stillstand
@@ -530,9 +530,15 @@ class hipe:
                 self._maneuver_cancel("Timeout")
                 return
 
-            # Fahren: Kriechgang in der Slow-Zone, sonst Normalgeschwindigkeit
-            pct = self.MAN_SPEED_SLOW_PCT if remaining <= self.MAN_SLOW_ZONE_M \
-                  else self.MAN_SPEED_PCT
+            # Fahren: Kriechgang nur, wenn genug Distanz für einen Bremsweg
+            # übrig ist. Kurze Ziele (<= Slow-Zone) laufen komplett mit
+            # Normalgeschwindigkeit — der Kriechgang-PWM kann sonst unter
+            # der Anlaufschwelle des (schweren) Fahrzeugs liegen.
+            if self._man_target_m <= self.MAN_SLOW_ZONE_M:
+                pct = self.MAN_SPEED_PCT
+            else:
+                pct = self.MAN_SPEED_SLOW_PCT if remaining <= self.MAN_SLOW_ZONE_M \
+                      else self.MAN_SPEED_PCT
             self._target_speed = float(self._man_dir * pct)
             self._target_steer = 0.0
             # Heartbeat füttern, sonst greift die Totmannschaltung

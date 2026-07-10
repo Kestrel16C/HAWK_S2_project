@@ -1,7 +1,7 @@
 # servo_test.py
 # Standalone, on-demand servo test (independent of hipe.py).
-# jaw: locked-in open/close function (calibrated values below).
-# lock: still under test via move("lock", pct, duration_ms).
+# jaw:  locked-in open/close function (calibrated values below).
+# lock: locked-in engage/release function (calibrated values below).
 
 from machine import Pin, PWM
 import time
@@ -53,6 +53,15 @@ JAW_CLOSE_PCT   = -35
 JAW_CLOSE_MS    = 1200
 # #############################################################################
 
+# #############################################################################
+# ##  LOCKED-IN LOCK-SERVO CALIBRATION — confirmed open/close directions.    ##
+# #############################################################################
+LOCK_ENGAGE_PCT  = -45   # closes/locks
+LOCK_ENGAGE_MS   = 350
+LOCK_RELEASE_PCT = +45   # opens/unlocks
+LOCK_RELEASE_MS  = 325
+# #############################################################################
+
 def jaw_open():
     print("[jaw] OPEN  pct=%+d for %dms" % (JAW_OPEN_PCT, JAW_OPEN_MS))
     servos["jaw"].run(JAW_OPEN_PCT, JAW_OPEN_MS)
@@ -63,8 +72,18 @@ def jaw_close():
     servos["jaw"].run(JAW_CLOSE_PCT, JAW_CLOSE_MS)
     print("[jaw] stopped")
 
+def lock_engage():
+    print("[lock] ENGAGE pct=%+d for %dms" % (LOCK_ENGAGE_PCT, LOCK_ENGAGE_MS))
+    servos["lock"].run(LOCK_ENGAGE_PCT, LOCK_ENGAGE_MS)
+    print("[lock] stopped")
+
+def lock_release():
+    print("[lock] RELEASE pct=%+d for %dms" % (LOCK_RELEASE_PCT, LOCK_RELEASE_MS))
+    servos["lock"].run(LOCK_RELEASE_PCT, LOCK_RELEASE_MS)
+    print("[lock] stopped")
+
 def move(target, pct, duration_ms):
-    """Free-form REPL command for the still-untested lock servo,
+    """Free-form REPL command for further ad-hoc testing on either servo,
     e.g.: move("lock", 40, 300)"""
     if target not in servos:
         print("Unknown target:", target, "- use 'jaw' or 'lock'")
