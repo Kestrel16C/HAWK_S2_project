@@ -15,9 +15,9 @@ JAW_CLOSE_MS     = 1200
 
 LOCK_PIN         = 8
 LOCK_ENGAGE_PCT  = -45
-LOCK_ENGAGE_MS   = 350
+LOCK_ENGAGE_MS   = 375
 LOCK_RELEASE_PCT = +45
-LOCK_RELEASE_MS  = 325
+LOCK_RELEASE_MS  = 350
 # #############################################################################
 
 # FS90R-Pulsparameter (Datenblatt)

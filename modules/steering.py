@@ -127,14 +127,15 @@ class Steering:
         self._last_duty = self._us_to_duty(self.us_mid)
         self._last_update = time.ticks_ms()
 
-        # --- Slew-Rate-Begrenzung (Servo-/Getriebeschutz) -------------------
-        # Begrenzt die Winkelgeschwindigkeit, damit die träge Motor-Masse
-        # nicht mit vollem Servo-Tempo herumgerissen wird (Getriebe-Schnappen
-        # beim abrupten Stopp). Konvergiert, weil die Hauptschleife den
-        # Sollwert mit ~100 Hz wiederholt setzt. 0 oder None = deaktiviert.
-        self.slew_deg_per_s = 200.0
-        self._cur_angle = 0.0
-        self._last_slew_ms = time.ticks_ms()
+        # --- Bewegungsglättung (Servo-/Getriebeschutz) -----------------------
+        # EMA-Tiefpass (Schrittweite ~ Restfehler -> natürliches Abbremsen
+        # vor dem Ziel, kein Endanschlag-Schnappen) kombiniert mit harter
+        # Geschwindigkeitsgrenze für grosse Sprünge. Zeitbasiert, funktioniert
+        # daher unabhängig von der tatsächlichen Loop-Frequenz.
+        self.slew_deg_per_s = 200.0   # harte Obergrenze Winkelgeschwindigkeit
+        self.smooth_per_s   = 6.0     # EMA-Gain (~Zeitkonstante 1/6 s)
+        self._cur_angle     = 0.0
+        self._last_slew_ms  = time.ticks_ms()
 
         # Start in Mittelstellung
         self.center()
@@ -196,17 +197,25 @@ class Steering:
         elif a > self.angle_max:
             a = self.angle_max
             
-        # --- Slew-Rate-Begrenzung: nur schrittweise Richtung Ziel bewegen ---
+        # --- Glättung: EMA-Abbremsung + Rate-Limit --------------------------
         now = time.ticks_ms()
         dt = time.ticks_diff(now, self._last_slew_ms)
         self._last_slew_ms = now
         if self.slew_deg_per_s and 0 < dt < 500:
-            max_step = self.slew_deg_per_s * (dt / 1000.0)
             diff = a - self._cur_angle
-            if diff > max_step:
-                a = self._cur_angle + max_step
-            elif diff < -max_step:
-                a = self._cur_angle - max_step
+            if abs(diff) > 0.5:   # nah am Ziel: direkt übernehmen
+                # 1) EMA: Schritt proportional zum Restfehler
+                alpha = self.smooth_per_s * (dt / 1000.0)
+                if alpha > 1.0:
+                    alpha = 1.0
+                step = diff * alpha
+                # 2) Harte Geschwindigkeitsgrenze für grosse Sprünge
+                max_step = self.slew_deg_per_s * (dt / 1000.0)
+                if step > max_step:
+                    step = max_step
+                elif step < -max_step:
+                    step = -max_step
+                a = self._cur_angle + step
         self._cur_angle = a
 
         # Symmetrische Interpolation um die Mitte:

@@ -64,6 +64,8 @@ Examples:
 """
 
 import time
+HIPE_REV = "2026-07-10a"   # Bei JEDER Änderung hochzählen!
+print("hipe.py Revision:", HIPE_REV)
 
 # --- Import der Teilmodule ----------------------------------------------------
 # „modules.*“ sind die offenen Komponenten (sichtbarer Code).
@@ -391,9 +393,18 @@ class hipe:
             self.reset_distance()
             print("-> Odometer auf 0 gesetzt.")
 
-        # --- C: GREIFARM & TRIGGER (Weiterleitung an Senior) ---
-        elif (type == "arm" or type == "trigger" or type == "jaw"):
-            # Wenn das Senior-Modul geladen ist, wird es weitergeleitet
+        # --- C: GREIFER, LOCK & TRIGGER (Weiterleitung an Senior) ---
+        elif type in ("arm", "trigger", "jaw", "lock"):
+            # Servo-Aktionen blockieren die Loop kurz (bis ~1.2s) —
+            # vorher den Antrieb sicher stoppen.
+            self._target_speed = 0.0
+            try:
+                if hasattr(self.drive, "set_percent"):
+                    self.drive.set_percent(0)
+                else:
+                    self.drive.set_speed_percent(0)
+            except Exception as e:
+                print("Antriebsstopp vor Servo-Aktion fehlgeschlagen:", e)
             if self.senior:
                 try:
                     self.senior.handle_aux(type, data)
