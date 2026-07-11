@@ -132,7 +132,7 @@ class Steering:
         # vor dem Ziel, kein Endanschlag-Schnappen) kombiniert mit harter
         # Geschwindigkeitsgrenze für grosse Sprünge. Zeitbasiert, funktioniert
         # daher unabhängig von der tatsächlichen Loop-Frequenz.
-        self.slew_deg_per_s = 200.0   # harte Obergrenze Winkelgeschwindigkeit
+        self.slew_deg_per_s = 0   # harte Obergrenze Winkelgeschwindigkeit
         self.smooth_per_s   = 6.0     # EMA-Gain (~Zeitkonstante 1/6 s)
         self._cur_angle     = 0.0
         self._last_slew_ms  = time.ticks_ms()
