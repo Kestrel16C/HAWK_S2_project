@@ -136,6 +136,9 @@ class Steering:
         self.smooth_per_s   = 3.0     # EMA-Gain (~Zeitkonstante 1/6 s)
         self._cur_angle     = 0.0
         self._last_slew_ms  = time.ticks_ms()
+        
+        self.LOCKIN_DEG = 5.0   # unterhalb dieser Restabweichung: Glättung aus,
+                                # exakten Zielwert schreiben (hartes Einrasten)
 
         # Start in Mittelstellung
         self.center()
@@ -203,7 +206,7 @@ class Steering:
         self._last_slew_ms = now
         if self.slew_deg_per_s and 0 < dt < 500:
             diff = a - self._cur_angle
-            if abs(diff) > 0.5:   # nah am Ziel: direkt übernehmen
+            if abs(diff) > self.LOCKIN_DEG:
                 # 1) EMA: Schritt proportional zum Restfehler
                 alpha = self.smooth_per_s * (dt / 1000.0)
                 if alpha > 1.0:
@@ -216,6 +219,8 @@ class Steering:
                 elif step < -max_step:
                     step = -max_step
                 a = self._cur_angle + step
+            # sonst: innerhalb LOCKIN_DEG -> a bleibt der exakte Zielwert,
+            # der Servo rastet mit voller eigener Autorität ein
         self._cur_angle = a
 
         # Symmetrische Interpolation um die Mitte:

@@ -189,21 +189,26 @@ class hipe:
                                    # gilt auch im Auslauf (safe_pct == 0)
         self._last_rpm = 0.0       # Drehzahl aus dem letzten Loop-Tick
 
-        # NEU: --- Distanz-Manöver (drive_dist) --------------------------------
-        # Nicht-blockierende Zustandsmaschine: RUN -> COAST -> fertig.
-        # WICHTIG: nutzt Referenzwert + Delta, resettet den Odometer NICHT.
-        self.MAN_SPEED_PCT      = 80     # Fahrgeschwindigkeit in %
-        self.MAN_SPEED_SLOW_PCT = 60     # Kriechgang kurz vor dem Ziel
+        # #####################################################################
+        # ##  FAHRPROFIL drive_dist — Launch-Boost bricht die Haftreibung,   ##
+        # ##  danach Cruise-Tempo, das der ToF-Schutz sicher stoppen kann.   ##
+        # #####################################################################
+        self.MAN_BOOST_PCT      = 80     # Anfahr-Boost (%)
+        self.MAN_BOOST_MS       = 250    # Boost-Dauer ab Manöverstart (ms)
+        self.MAN_SPEED_PCT      = 55     # Cruise-Geschwindigkeit (%)
+        self.MAN_SPEED_SLOW_PCT = 45     # Kriechgang kurz vor dem Ziel (%)
         self.MAN_SLOW_ZONE_M    = 0.10   # Kriechgang-Zone vor dem Ziel (m)
-        self.MAN_TIMEOUT_MS     = 15000  # Abbruch, falls Ziel nicht erreicht wird
-        self.MAN_COAST_MAX_MS   = 2000   # max. Wartezeit auf Stillstand
-        self._man_active   = False
-        self._man_state    = "RUN"       # "RUN" | "COAST"
-        self._man_ref_m    = 0.0         # Odometer-Stand bei Manöverstart
-        self._man_target_m = 0.0         # Soll-Distanz (Betrag)
-        self._man_dir      = 1           # +1 vorwärts, -1 rückwärts
-        self._man_start_ms = 0
-        self._man_coast_ms = 0
+        # #####################################################################
+        self.MAN_TIMEOUT_MS     = 15000
+        self.MAN_COAST_MAX_MS   = 2000
+        
+        # #####################################################################
+        # ##  INCH — kurzer Vollgas-Impuls zum Heranrücken an den Ball       ##
+        # #####################################################################
+        self.INCH_PCT = 100    # Impuls-Leistung (%)
+        self.INCH_MS  = 100    # Impuls-Dauer (ms)
+        # #####################################################################
+        self._inch_until = 0
 
         # ---------------------------------------------------------------------
         # HARDWARE: LENKUNG (SERVO)
@@ -427,10 +432,13 @@ class hipe:
                 return
             self._maneuver_start(abs(dist), 1 if dist > 0 else -1)
 
-        # NEU: --- E: DREHUNG (noch nicht implementiert) ---
-        elif type == "turn":
-            print("-> turn: noch nicht implementiert "
-                  "(benötigt kalibrierte Distanz + Lenkgeometrie).")
+        # --- E: INCH (kurzer Vorwärts-Impuls, Ballannäherung) ---
+        elif type == "inch":
+            if self._man_active:
+                print("-> inch: Manöver läuft, ignoriert.")
+                return
+            self._inch_until = time.ticks_add(time.ticks_ms(), self.INCH_MS)
+            print("-> Inch: %d%% für %d ms." % (self.INCH_PCT, self.INCH_MS))
 
         # NEU: --- F: KILL-SWITCH ---
         elif type == "kill":
@@ -694,6 +702,11 @@ class hipe:
             target_m (float): zu fahrende Distanz in m (Betrag).
             direction (int): +1 vorwärts, -1 rückwärts.
         """
+        if direction > 0 and _TOF_HW:
+            target_m = self._tof_presweep_cap(target_m)
+            if target_m <= 0:
+                return
+        
         self._man_ref_m    = self._dist_m   # Referenz merken, NICHT resetten
         self._man_target_m = target_m
         self._man_dir      = direction
@@ -741,17 +754,18 @@ class hipe:
                 self._maneuver_cancel("Timeout")
                 return
 
-            # Fahren: Kriechgang nur, wenn genug Distanz für einen Bremsweg
-            # übrig ist. Kurze Ziele (<= Slow-Zone) laufen komplett mit
-            # Normalgeschwindigkeit — der Kriechgang-PWM kann sonst unter
-            # der Anlaufschwelle des (schweren) Fahrzeugs liegen.
-            if self._man_target_m <= self.MAN_SLOW_ZONE_M:
-                pct = self.MAN_SPEED_PCT
+            # Geschwindigkeitsprofil: Boost -> Cruise -> Kriechgang
+            if time.ticks_diff(now, self._man_start_ms) < self.MAN_BOOST_MS:
+                pct = self.MAN_BOOST_PCT
+            elif self._man_target_m <= self.MAN_SLOW_ZONE_M:
+                pct = self.MAN_SPEED_PCT          # kurze Ziele: kein Kriechgang
+            elif remaining <= self.MAN_SLOW_ZONE_M:
+                pct = self.MAN_SPEED_SLOW_PCT
             else:
-                pct = self.MAN_SPEED_SLOW_PCT if remaining <= self.MAN_SLOW_ZONE_M \
-                      else self.MAN_SPEED_PCT
+                pct = self.MAN_SPEED_PCT
             self._target_speed = float(self._man_dir * pct)
-            self._target_steer = 0.0
+            # HINWEIS: Lenkung wird bewusst NICHT mehr zentriert —
+            # drive_dist fährt entlang des eingestellten Lenkwinkels (Bogen).
             # Heartbeat füttern, sonst greift die Totmannschaltung
             self._last_heartbeat = now
 
@@ -884,6 +898,15 @@ class hipe:
             # NEU: 2b) Distanz-Manöver (nur im MANUAL-Modus)
             if self._man_active and self.mode == "MANUAL":
                 self._maneuver_tick(now)
+                
+            # 2c) Inch-Impuls (zeitbegrenzter Schub; ToF-Schutz greift normal)
+            if self._inch_until:
+                if time.ticks_diff(self._inch_until, now) > 0:
+                    self._target_speed = float(self.INCH_PCT)
+                    self._last_heartbeat = now
+                else:
+                    self._inch_until = 0
+                    self._target_speed = 0.0            
 
             # 3) Strommessung periodisch auswerten
             if time.ticks_diff(now, self._last_adc) >= 120:
