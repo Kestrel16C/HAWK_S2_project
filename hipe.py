@@ -199,9 +199,9 @@ class hipe:
         # HARDWARE: LENKUNG (SERVO)
         # ---------------------------------------------------------------------
         self.steering = Steering(
-            pin=6,                 # Servo-Pin (GPIO 6)
-            pwm_freq_hz=50,        # Normale Servo-Frequenz
-            min_us=900, max_us=2100,
+            pin=6,
+            pwm_freq_hz=50,
+            min_us=560, max_us=2440,    # ~85° per side (was 900/2100 → ~54°)
             center_us=1500, deadband_us=10,
             angle_min=-90, angle_max=90,
             trim_deg=0,
@@ -357,6 +357,16 @@ class hipe:
                 self.mode = "MANUAL"
                 self._target_speed = 0  # Sicherheitsstopp
                 print("-> Modus: MANUELL")
+                
+        # --- H: LENKWINKEL DISKRET SETZEN ---
+        elif type == "steer_angle":
+            try:
+                deg = float(data)
+                self._target_steer = max(-100.0, min(100.0, (deg / 90.0) * 100.0))
+                self._last_heartbeat = time.ticks_ms()  # Heartbeat füttern
+                print("-> Lenkwinkel: %.0f°" % deg)
+            except (ValueError, TypeError):
+                print("-> steer_angle: ungültiger Wert:", data)
 
         # NEU: --- D: DISTANZ-MANÖVER ---
         # data = Distanz in m; negativ = rückwärts. Nutzt Referenz + Delta,
