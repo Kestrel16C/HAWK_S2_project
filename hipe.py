@@ -64,6 +64,16 @@ Examples:
 """
 
 import time
+
+# --- ToF-Sensoren (Kollisionsvermeidung) --------------------------------------
+try:
+    from machine import I2C, Pin as _Pin
+    from modules.vl53l0x import VL53L0X as _VL53L0X
+    _TOF_HW = True
+except ImportError:
+    print("VL53L0X-Treiber nicht gefunden – Kollisionsschutz deaktiviert.")
+    _TOF_HW = False
+
 HIPE_REV = "2026-07-10a"   # Bei JEDER Änderung hochzählen!
 print("hipe.py Revision:", HIPE_REV)
 
@@ -182,8 +192,8 @@ class hipe:
         # NEU: --- Distanz-Manöver (drive_dist) --------------------------------
         # Nicht-blockierende Zustandsmaschine: RUN -> COAST -> fertig.
         # WICHTIG: nutzt Referenzwert + Delta, resettet den Odometer NICHT.
-        self.MAN_SPEED_PCT      = 60     # Fahrgeschwindigkeit in %
-        self.MAN_SPEED_SLOW_PCT = 40     # Kriechgang kurz vor dem Ziel
+        self.MAN_SPEED_PCT      = 80     # Fahrgeschwindigkeit in %
+        self.MAN_SPEED_SLOW_PCT = 60     # Kriechgang kurz vor dem Ziel
         self.MAN_SLOW_ZONE_M    = 0.10   # Kriechgang-Zone vor dem Ziel (m)
         self.MAN_TIMEOUT_MS     = 15000  # Abbruch, falls Ziel nicht erreicht wird
         self.MAN_COAST_MAX_MS   = 2000   # max. Wartezeit auf Stillstand
@@ -261,6 +271,38 @@ class hipe:
         except (OSError, RuntimeError, ValueError) as e:
             print("HTTP-Setup fehlgeschlagen:", e)
             raise
+
+        # #####################################################################
+        # ##  KOLLISIONSSCHUTZ — ToF-Abstandsschwellen (mm, KORRIGIERT)      ##
+        # ##  Sofortiger Stopp der VORWÄRTSfahrt bei Unterschreitung.        ##
+        # ##  Rückwärtsfahrt und Lenkung bleiben IMMER erlaubt.              ##
+        # ##  Front-Schwelle ist bei geöffnetem Greifer deaktiviert.         ##
+        # #####################################################################
+        self.TOF_STOP_FRONT_MM   = 150   # 15 cm — Frontsensor
+        self.TOF_STOP_SIDE_MM    = 150   # 15 cm — Seitensensoren (L/R)
+        self.TOF_RELEASE_HYST_MM = 30    # Freigabe erst ab Schwelle + 30 mm
+        # #####################################################################
+
+        # Korrekturfaktoren aus der Kalibrierfahrt: real = (raw - offset) / slope
+        self._tof_corr = {
+            "left":  {"offset": 48.5, "slope": 1.00},
+            "right": {"offset": 20.0, "slope": 1.05},
+            "front": {"offset": 19.5, "slope": 1.05},
+        }
+
+        # Rollende Median-Puffer (5 Werte) + aktueller Median je Sensor
+        self._tof_bufs = {"front": [], "left": [], "right": []}
+        self._tof_vals = {"front": None, "left": None, "right": None}
+        self._tof_blocked = False
+
+        # Hardware-Init: Sensoren in CONTINUOUS-Modus versetzen (messen
+        # selbstständig alle ~20-33ms; die Loop pollt nur Data-Ready-Register
+        # -> KEINE blockierenden Waits im Loop-Takt).
+        self._tof_sensors = {}
+        self._tof_i2c = None
+        self._tof_addr = {}
+        if _TOF_HW:
+            self._tof_init()
 
         # Für ruhigeres Logging nur bei Änderungen ausgeben
         self._last_out = {"safe": None, "safety": None}
@@ -492,6 +534,154 @@ class hipe:
         step = (abs(rpm) / 60.0) * (dt_odo / 1000.0) \
                * 3.141592653589793 * self.kin["wheel_diameter"]
         self._dist_m += self._odo_dir * step
+
+    # -------------------------------------------------------------------------
+    # KOLLISIONSSCHUTZ (ToF, Continuous-Modus, nicht-blockierend)
+    # -------------------------------------------------------------------------
+
+    def _tof_init(self):
+        """Adresstanz + Init + Start des Continuous-Modus (einmal beim Boot)."""
+        try:
+            xshut_r = _Pin(14, _Pin.OUT)
+            xshut_l = _Pin(15, _Pin.OUT)
+            xshut_r.value(0)
+            xshut_l.value(0)
+            time.sleep_ms(50)
+
+            i2c = I2C(0, scl=_Pin(5), sda=_Pin(4), freq=100000)
+            self._tof_i2c = i2c
+
+            ADDR_DEF, ADDR_FRONT, ADDR_RIGHT = 0x29, 0x2A, 0x2B
+
+            try:
+                i2c.writeto_mem(ADDR_DEF, 0x8A, bytes([ADDR_FRONT]))
+            except OSError as e:
+                print("[ToF] Front Adresswechsel fehlgeschlagen:", e)
+            time.sleep_ms(10)
+
+            xshut_r.value(1)
+            time.sleep_ms(50)
+            try:
+                i2c.writeto_mem(ADDR_DEF, 0x8A, bytes([ADDR_RIGHT]))
+            except OSError as e:
+                print("[ToF] Right Adresswechsel fehlgeschlagen:", e)
+            time.sleep_ms(10)
+
+            xshut_l.value(1)
+            time.sleep_ms(50)
+            print("[ToF] Bus:", i2c.scan())
+
+            for name, addr in (("front", ADDR_FRONT), ("right", ADDR_RIGHT), ("left", ADDR_DEF)):
+                try:
+                    tof = _VL53L0X(i2c, address=addr, io_timeout_ms=1000)
+                    self._tof_sensors[name] = tof
+                    self._tof_addr[name] = addr
+                    print("[ToF] %s OK (0x%02X)" % (name, addr))
+                except (OSError, RuntimeError) as e:
+                    print("[ToF] %s FAILED (0x%02X): %s" % (name, addr, e))
+
+            # 20ms-High-Speed-Budget setzen (falls der Treiber es anbietet)
+            for tof in self._tof_sensors.values():
+                fn = getattr(tof, "set_measurement_timing_budget", None)
+                if callable(fn):
+                    try:
+                        fn(20000)
+                    except Exception:
+                        pass
+
+            # Continuous-Modus starten: Treibermethode falls vorhanden,
+            # sonst Standard-Registersequenz (0x02 -> SYSRANGE_START).
+            for name, tof in self._tof_sensors.items():
+                started = False
+                fn = getattr(tof, "start_continuous", None) or getattr(tof, "start", None)
+                if callable(fn):
+                    try:
+                        fn()
+                        started = True
+                    except Exception:
+                        pass
+                if not started:
+                    try:
+                        self._tof_i2c.writeto_mem(self._tof_addr[name], 0x00, b"\x02")
+                        started = True
+                    except OSError as e:
+                        print("[ToF] %s Continuous-Start fehlgeschlagen: %s" % (name, e))
+                if started:
+                    print("[ToF] %s Continuous-Modus aktiv." % name)
+
+        except Exception as e:
+            print("[ToF] Init komplett fehlgeschlagen:", e)
+            self._tof_sensors = {}
+
+    def _tof_correct(self, name, raw_mm):
+        c = self._tof_corr.get(name)
+        return (raw_mm - c["offset"]) / c["slope"] if c else raw_mm
+
+    @staticmethod
+    def _median(vals):
+        if not vals:
+            return None
+        s = sorted(vals)
+        m = len(s) // 2
+        return s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2
+
+    def _tof_poll(self):
+        """Nicht-blockierend: pro Sensor Data-Ready prüfen (1 Registerbyte);
+        nur wenn ein fertiges Ergebnis vorliegt, dieses auslesen (~1-2ms).
+        Es wird NIE auf eine Messung gewartet."""
+        for name, addr in self._tof_addr.items():
+            try:
+                ready = self._tof_i2c.readfrom_mem(addr, 0x13, 1)[0] & 0x07
+                if not ready:
+                    continue
+                data = self._tof_i2c.readfrom_mem(addr, 0x14, 12)
+                raw = (data[10] << 8) | data[11]
+                self._tof_i2c.writeto_mem(addr, 0x0B, b"\x01")  # Interrupt löschen
+            except OSError:
+                continue
+
+            # Sentinel (8190/8191 = kein Ziel) und implausible Werte verwerfen
+            if raw >= 8190 or raw < 10:
+                continue
+            buf = self._tof_bufs[name]
+            buf.append(self._tof_correct(name, raw))
+            if len(buf) > 5:
+                buf.pop(0)
+            # Median erst ab 3 Werten als gültig betrachten (Ausreisserschutz)
+            if len(buf) >= 3:
+                self._tof_vals[name] = self._median(buf)
+
+    def _tof_check_proximity(self):
+        """Setzt/löst self._tof_blocked anhand der Mediane, mit Hysterese.
+
+        - Seitensensoren sperren Vorwärtsfahrt immer bei Unterschreitung.
+        - Frontsensor nur bei GESCHLOSSENEM Greifer (offen = Ballaufnahme).
+        - Freigabe erst, wenn alle relevanten Sensoren über Schwelle+Hysterese.
+        """
+        jaw_open = bool(self.senior and getattr(self.senior, "jaw_open", False))
+
+        # Beim Auslösen gilt die Schwelle, beim Freigeben Schwelle + Hysterese
+        margin = self.TOF_RELEASE_HYST_MM if self._tof_blocked else 0
+
+        blocked = False
+        for name, limit in (("left", self.TOF_STOP_SIDE_MM),
+                            ("right", self.TOF_STOP_SIDE_MM),
+                            ("front", self.TOF_STOP_FRONT_MM)):
+            if name == "front" and jaw_open:
+                continue
+            val = self._tof_vals.get(name)
+            if val is not None and val < (limit + margin):
+                blocked = True
+                break
+
+        if blocked and not self._tof_blocked:
+            print("[ToF] STOPP: Hindernis unter Schwelle (L:%s R:%s F:%s, Greifer %s)"
+                  % (self._tof_vals["left"], self._tof_vals["right"],
+                     self._tof_vals["front"], "offen" if jaw_open else "zu"))
+        elif not blocked and self._tof_blocked:
+            print("[ToF] Freigabe: Abstand wieder ausreichend.")
+
+        self._tof_blocked = blocked
 
     # -------------------------------------------------------------------------
     # NEU: DISTANZ-MANÖVER (drive_dist)
@@ -751,6 +941,25 @@ class hipe:
 
             # 6b) Odometrie mit der frisch gelesenen Drehzahl aktualisieren
             self._update_odometry(rpm_for_safety, safe_pct, now)
+
+            # 6c) ToF-Kollisionsschutz (passiv, nicht-blockierend):
+            #     sperrt NUR Vorwärts-PWM; rückwärts und Lenkung bleiben frei.
+            if _TOF_HW and self._tof_sensors:
+                self._tof_poll()
+                self._tof_check_proximity()
+                if self._tof_blocked:
+                    # Laufendes Vorwärts-Manöver abbrechen
+                    if self._man_active and self._man_dir > 0:
+                        self._maneuver_cancel("Kollisionsschutz")
+                    # Autopilot deaktivieren — soll nicht dagegen anarbeiten
+                    if self.mode == "AUTO":
+                        self.mode = "MANUAL"
+                        self._target_speed = 0.0
+                        print("[ToF] AUTO -> MANUAL (Kollisionsschutz).")
+                    # Vorwärts-PWM klemmen (rückwärts bleibt erlaubt)
+                    if safe_pct > 0:
+                        safe_pct = 0
+                        self._safe_speed = 0
 
             # ruhiger log
             if (self._last_out["safe"] != safe_pct) or (self._last_out["safety"] != status):
