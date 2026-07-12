@@ -791,6 +791,14 @@ class hipe:
                     self._target_speed = 0
 
             now = time.ticks_ms()
+            
+            # TEMP: Loop-Jitter-Diagnose — nach Auswertung wieder entfernen
+            if not hasattr(self, "_jit_last"): self._jit_last, self._jit_max = now, 0
+            _d = time.ticks_diff(now, self._jit_last)
+            self._jit_last = now
+            if _d > self._jit_max:
+                self._jit_max = _d
+                if _d > 15: print("[JIT] Tick %d ms (Soll 10)" % _d)
 
             # 2b) Distanz-Manöver
             if self._man_active and self.mode == "MANUAL":
