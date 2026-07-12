@@ -52,7 +52,7 @@
     .color-swatch{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);vertical-align:middle;margin-right:6px;background:#334155;}
     .placeholder{color:var(--muted);font-size:13px;text-align:center;padding:24px 0;}
 
-    .statusbar{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid rgba(255,255,255,0.08);display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;padding:8px 12px;z-index:9000;}
+    .statusbar{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid rgba(255,255,255,0.08);display:grid;grid-template-columns:repeat(5, 1fr);gap:8px;padding:8px 12px;z-index:9000;}
     .statusbar .kv{text-align:center;}
 
     @keyframes blinkPulse{from{opacity:.35;transform:scale(1.00);}to{opacity:1;transform:scale(1.03);}}
@@ -171,6 +171,7 @@
   <button id="killBtn" onclick="killSwitch()">⛔ STOP</button>
 
   <div class="statusbar">
+    <div class="kv"><div class="k">ToF F (mm)</div><div class="v" id="sbTofF">–</div></div>
     <div class="kv"><div class="k">RPM</div><div class="v" id="rpm">–</div></div>
     <div class="kv"><div class="k">Target Steer</div><div class="v" id="tSteer">0</div></div>
     <div class="kv"><div class="k">Output Speed</div><div class="v" id="oSpeed">0</div></div>
@@ -333,6 +334,7 @@
       tofFront: document.getElementById('tofFront'),
       tofLeft: document.getElementById('tofLeft'),
       tofRight: document.getElementById('tofRight'),
+      sbTofF: document.getElementById('sbTofF'),
       groundColor: document.getElementById('groundColor'),
       groundSwatch: document.getElementById('groundSwatch'),
       navMode: document.getElementById('navMode'),
@@ -378,6 +380,7 @@
             ui.tofFront.textContent = (typeof d.tof.front === 'number') ? d.tof.front : '–';
             ui.tofLeft.textContent  = (typeof d.tof.left  === 'number') ? d.tof.left  : '–';
             ui.tofRight.textContent = (typeof d.tof.right === 'number') ? d.tof.right : '–';
+            ui.sbTofF.textContent   = (typeof d.tof.front === 'number') ? d.tof.front : '–';
           }
           if (typeof d.ground_color === 'string') {
             ui.groundColor.textContent = d.ground_color;
