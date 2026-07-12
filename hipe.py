@@ -1,62 +1,34 @@
 # hipe.py
-# MIT License
-# Copyright (c) 2025
-# Tobias Bürmann, HAWK – Hochschule für angewandte Wissenschaft und Kunst
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-#
+# MIT License — Tobias Bürmann, HAWK (Header gekürzt, Lizenztext unverändert gültig)
 # -----------------------------------------------------------------------------
 # HAUPT-ORCHESTRATOR
-# -----------------------------------------------------------------------------
-# Start aus der REPL:
-#   >>> from hipe import hipe
-#   >>> h = hipe("Hier WLAN-Passwort angeben")
-#   >>> h.run()
-# Beenden: Strg+C in der REPL.
+# Start: >>> from hipe import hipe ; h = hipe("PASSWORT") ; h.run()
 # -----------------------------------------------------------------------------
 
 import time
 
-HIPE_REV = "2026-07-12a"   # Bei JEDER Änderung hochzählen!
+HIPE_REV = "2026-07-12c"   # Bei JEDER Änderung hochzählen!
 print("hipe.py Revision:", HIPE_REV)
 
-# --- Import der Teilmodule ----------------------------------------------------
 from modules.led import LedBlinker
 from modules.net import NetworkManager
 from modules.webserver import WebServer
 
-from secure.drive import DriveController          # Motorsteuerung inkl. Encoder
-from modules.steering import Steering             # Servo-Lenkung (offen)
-from secure.current_monitor import CurrentMonitor # Zweikanal-Strommessung
-from secure.safety import SafetyManager           # Sicherheitslogik
-from secure.crash_counter import CrashCounter     # „Deathmatch"-Lebenszähler
+from secure.drive import DriveController
+from modules.steering import Steering
+from secure.current_monitor import CurrentMonitor
+from secure.safety import SafetyManager
+from secure.crash_counter import CrashCounter
 
 # --- ToF-Sensoren (Kollisionsvermeidung) --------------------------------------
 try:
-    from machine import I2C, Pin as _Pin
+    from machine import I2C, Pin as _Pin, ADC as _ADC
     from modules.vl53l0x import VL53L0X as _VL53L0X
     _TOF_HW = True
 except ImportError:
     print("VL53L0X-Treiber nicht gefunden – Kollisionsschutz deaktiviert.")
     _TOF_HW = False
 
-# ProjektSenior
 try:
     from modules.senior import SeniorProject
     SENIOR_AVAILABLE = True
@@ -68,9 +40,6 @@ except ImportError:
 class hipe:
     """Zentrale, nicht-blockierende Mainloop für Fahrzeug, Telemetrie und Web-UI."""
 
-    # -------------------------------------------------------------------------
-    # INITIALISIERUNG
-    # -------------------------------------------------------------------------
     def __init__(self, wifi_password: str) -> None:
 
         # --- Zeit/Loop-Parameter ---------------------------------------------
@@ -81,29 +50,27 @@ class hipe:
         self.HEARTBEAT_TIMEOUT_MS = 800
         self._last_heartbeat = time.ticks_ms()
 
-        # --- Zielwerte (aus der Web-UI) --------------------------------------
+        # --- Zielwerte ---------------------------------------------------------
         self._target_speed = 0.0
         self._target_steer = 0.0
         self._safe_speed   = 0
 
-        # --- LED, Netzwerk, Webserver-Basis ----------------------------------
+        # --- LED, Netzwerk ------------------------------------------------------
         self.led = LedBlinker()
         self.web_root = "/www"
         self.port = 80
         self.net = NetworkManager(country="DE")
         self.wifi_password = wifi_password
 
-        # --- Zustandsautomat ---------------------------------------------------
-        # MANUAL: Web-UI steuert direkt. AUTO: Autopilot übernimmt.
         self.mode = "MANUAL"
 
         # ---------------------------------------------------------------------
         # HARDWARE: ANTRIEB (MOTOR + ENCODER)
         # ---------------------------------------------------------------------
         self.kin = {
-            "pulses_per_rev": 16,    # Flanken A-rising pro Motorumdrehung
-            "gear_ratio": 6.3,       # Getriebe Motorwelle:Ausgangswelle
-            "wheel_diameter": 0.02,  # Raddurchmesser in m
+            "pulses_per_rev": 16,    # Zählung erfolgt im frozen DriveController;
+            "gear_ratio": 6.3,       # Datenblatt nennt 11 Pulse/U — Skalenfaktor
+            "wheel_diameter": 0.02,  # wird über Distanz-Kalibrierung absorbiert.
             "invert_dir": False,
         }
         self.drive = DriveController(**self.kin)
@@ -111,36 +78,52 @@ class hipe:
         # --- Odometrie (RPM-Integration) --------------------------------------
         self._dist_m = 0.0
         self._dist_last_ms = time.ticks_ms()
-        self._odo_dir = 1          # zuletzt kommandierte Richtung (+1/-1)
+        self._odo_dir = 1
         self._last_rpm = 0.0
+        # Plausibilitätsgrenze gegen Encoder-Störimpulse (Bürstenrauschen):
+        # Messwerte darüber sind Fiktion und werden komplett verworfen.
+        self.ODO_MAX_RPM = 1000
 
         # #####################################################################
-        # ##  FAHRPROFIL drive_dist — Launch-Boost bricht die Haftreibung,   ##
-        # ##  danach Cruise-Tempo, das der ToF-Schutz sicher stoppen kann.   ##
+        # ##  FAHRPROFIL — Launch-Boost + Cruise. HIER EIGENE TUNING-WERTE   ##
+        # ##  EINTRAGEN (Defaults = letzter bekannter Stand)!                ##
         # #####################################################################
-        self.MAN_BOOST_PCT      = 80     # Anfahr-Boost (%)
-        self.MAN_BOOST_MS       = 100    # Boost-Dauer ab Manöverstart (ms)
-        self.MAN_SPEED_PCT      = 40     # Cruise-Geschwindigkeit (%)
-        self.MAN_SPEED_SLOW_PCT = 30     # Kriechgang kurz vor dem Ziel (%)
-        self.MAN_SLOW_ZONE_M    = 0.10   # Kriechgang-Zone vor dem Ziel (m)
+        self.MAN_BOOST_PCT      = 70     # Anfahr-Boost (%)
+        self.MAN_BOOST_MS       = 100    # Boost-Dauer ab Start (ms)
+        self.MAN_SPEED_PCT      = 50     # Cruise (%); wird vom UI-Slider gesetzt
+        self.MAN_SPEED_SLOW_PCT = 40     # Kriechgang (nur drive_dist)
+        self.MAN_SLOW_ZONE_M    = 0.20
         # #####################################################################
-        self.MAN_TIMEOUT_MS     = 15000  # Abbruch, falls Ziel nicht erreicht
-        self.MAN_COAST_MAX_MS   = 2000   # max. Wartezeit auf Stillstand
+        self.MAN_TIMEOUT_MS     = 15000
+        self.MAN_COAST_MAX_MS   = 2000
 
         # #####################################################################
-        # ##  INCH — kurzer Vollgas-Impuls zum Heranrücken an den Ball       ##
+        # ##  INCH — kurzer Vollgas-Impuls (Dauer kommt jetzt aus dem UI)    ##
         # #####################################################################
-        self.INCH_PCT = 100    # Impuls-Leistung (%)
-        self.INCH_MS  = 80     # Impuls-Dauer (ms)  <-- ggf. eigenen Wert eintragen
+        self.INCH_PCT        = 100
+        self.INCH_MS_DEFAULT = 80      # Fallback, falls UI keinen Wert sendet
+        self.INCH_MS_MIN     = 30
+        self.INCH_MS_MAX     = 500
         # #####################################################################
         self._inch_until = 0
 
-        # --- Manöver-Zustandsvariablen (Zustandsmaschine drive_dist) ---------
+        # --- HOLD-DRIVE (Fahren solange Button gedrückt, mit Heartbeat) ------
+        self.HOLD_TIMEOUT_MS = 400   # MUSS > UI-Sendeintervall (180ms) sein,
+                                     # sonst stottert die Fahrt selbst bei
+                                     # perfekter Verbindung!
+        self._hold_lockout_until = 0 # nach drive_stop/kill: noch gepufferte
+                                     # drive_hold-Pakete verwerfen (Nachlauf-Fix)
+        self._hold_until    = 0
+        self._hold_dir      = 1
+        self._hold_pct      = self.MAN_SPEED_PCT
+        self._hold_start_ms = 0
+
+        # --- Manöver-Zustandsvariablen (drive_dist bleibt für Autopilot) -----
         self._man_active   = False
-        self._man_state    = "RUN"       # "RUN" | "COAST"
-        self._man_ref_m    = 0.0         # Odometer-Stand bei Manöverstart
-        self._man_target_m = 0.0         # Soll-Distanz (Betrag, m)
-        self._man_dir      = 1           # +1 vorwärts, -1 rückwärts
+        self._man_state    = "RUN"
+        self._man_ref_m    = 0.0
+        self._man_target_m = 0.0
+        self._man_dir      = 1
         self._man_start_ms = 0
         self._man_coast_ms = 0
 
@@ -156,22 +139,42 @@ class hipe:
             trim_deg=0,
             invert=False,
         )
-        self.steering.center()  # Nach Start in Mittelstellung
+        self.steering.center()
 
         # ---------------------------------------------------------------------
-        # HARDWARE: STROMMESSUNG (2 Kanäle)
+        # HARDWARE: STROMMESSUNG
         # ---------------------------------------------------------------------
         self.current = CurrentMonitor()
         self.current.start()
 
         # ---------------------------------------------------------------------
-        # SICHERHEIT
+        # UMWELT-SENSORIK (Telemetrie: Temperatur + Irradianz)
         # ---------------------------------------------------------------------
-        self.safety = SafetyManager()
+        # NTC 10k/3950 an ADC0 (GP26); TCS3200 Clear-Kanal (S2=GP19 H, S3=GP17 L,
+        # OUT=GP16). Abtastung alle ENV_PERIOD_MS in der Loop (blockiert max.
+        # ~60ms pro Sample — bei 2.5s Takt unkritisch).
+        self.ENV_PERIOD_MS = 2500
+        self.TEMP_OFFSET_C = -2.0     # konstante Korrektur (empirisch bestätigt)
+        self.IRR_RESPONSIVITY = 150   # Hz/(uW/cm2), Clear, 20%-Skalierung
+        self._env_last_ms = 0
+        self._temp_c = None           # int °C
+        self._irr = None              # int uW/cm2
+        self._env_hw = False
+        try:
+            self._ntc = _ADC(_Pin(26)) #REFERENCE ALL PINS FROM SENSOR_CALIBRATION.PY!
+            self._tcs_s2 = _Pin(19, _Pin.OUT)   # S2 = GP19 (wie sensor_calibration.py!)
+            self._tcs_s3 = _Pin(17, _Pin.OUT)   # S3 = GP17
+            self._tcs_out = _Pin(16, _Pin.IN)
+            self._tcs_s2.value(1)
+            self._tcs_s3.value(0)
+            self._env_hw = True
+        except Exception as e:
+            print("Umwelt-Sensorik-Init fehlgeschlagen:", e)
 
         # ---------------------------------------------------------------------
-        # „DEATHMATCH"-MODUS
+        # SICHERHEIT / DEATHMATCH
         # ---------------------------------------------------------------------
+        self.safety = SafetyManager()
         self.deathmatch_enabled = False
         self.crash = CrashCounter()
 
@@ -206,37 +209,27 @@ class hipe:
             raise
 
         # #####################################################################
-        # ##  KOLLISIONSSCHUTZ — ToF-Abstandsschwellen (mm, KORRIGIERT)      ##
-        # ##  Sofortiger Stopp der VORWÄRTSfahrt bei Unterschreitung.        ##
-        # ##  Rückwärtsfahrt und Lenkung bleiben IMMER erlaubt.              ##
-        # ##  Front-Schwelle ist bei geöffnetem Greifer deaktiviert.         ##
+        # ##  KOLLISIONSSCHUTZ — ToF-Schwellen (mm, korrigierte Werte)       ##
         # #####################################################################
-        self.TOF_STOP_FRONT_MM   = 150   # 15 cm — Frontsensor
-        self.TOF_STOP_SIDE_MM    = 100   # 15 cm — Seitensensoren (L/R)
-        self.TOF_RELEASE_HYST_MM = 30    # Freigabe erst ab Schwelle + 30 mm
+        self.TOF_STOP_FRONT_MM   = 225
+        self.TOF_STOP_SIDE_MM    = 100
+        self.TOF_RELEASE_HYST_MM = 30
         # #####################################################################
 
-        # Korrekturfaktoren aus der Kalibrierfahrt: real = (raw - offset) / slope
         self._tof_corr = {
             "left":  {"offset": 48.5, "slope": 1.00},
             "right": {"offset": 20.0, "slope": 1.05},
             "front": {"offset": 19.5, "slope": 1.05},
         }
-
-        # Rollende Median-Puffer (5 Werte) + aktueller Median je Sensor
         self._tof_bufs = {"front": [], "left": [], "right": []}
         self._tof_vals = {"front": None, "left": None, "right": None}
         self._tof_blocked = False
-
-        # Hardware-Init: Sensoren in CONTINUOUS-Modus (messen selbstständig,
-        # Loop pollt nur Data-Ready -> keine blockierenden Waits im Takt).
         self._tof_sensors = {}
         self._tof_i2c = None
         self._tof_addr = {}
         if _TOF_HW:
             self._tof_init()
 
-        # Für ruhigeres Logging nur bei Änderungen ausgeben
         self._last_out = {"safe": None, "safety": None}
 
         # ---------------------------------------------------------------------
@@ -255,26 +248,16 @@ class hipe:
     # -------------------------------------------------------------------------
 
     def on_control(self, spd, st) -> None:
-        """Web-Callback: neue Zielwerte setzen (Speed/Steer)."""
         if self._man_active:
             self._maneuver_cancel("manuelle Eingabe")
-
-        if spd > 100:
-            spd = 100
-        if spd < -100:
-            spd = -100
-        if st > 100:
-            st = 100
-        if st < -100:
-            st = -100
-
+        if spd > 100: spd = 100
+        if spd < -100: spd = -100
+        if st > 100: st = 100
+        if st < -100: st = -100
         self._target_speed = float(spd)
         self._target_steer = float(st)
         self._last_heartbeat = time.ticks_ms()
 
-    # -------------------------------------------------------------------------
-    # Handler für Zusatz-Befehle (Setup & Erweiterungen)
-    # -------------------------------------------------------------------------
     def on_aux_command(self, type, data) -> None:
         """Verarbeitet Zusatzbefehle vom Webserver (/aux?type=...&data=...)."""
         print(f"[AUX] Type: {type} | Data: {data}")
@@ -283,19 +266,19 @@ class hipe:
         if type == "steer_config":
             try:
                 parts = data.split(",")
-                if len(parts) == 3:
-                    if self.steering:
-                        self.steering.angle_min = int(parts[0])
-                        self.steering.angle_max = int(parts[1])
-                        self.steering.trim_deg = int(parts[2])
-                        print("-> Lenkungskonfiguration aktualisiert.")
+                if len(parts) == 3 and self.steering:
+                    self.steering.angle_min = int(parts[0])
+                    self.steering.angle_max = int(parts[1])
+                    self.steering.trim_deg = int(parts[2])
+                    print("-> Lenkungskonfiguration aktualisiert.")
             except Exception as e:
                 print(f"-> Fehler bei steer_config: {e}")
 
-        # --- B: MODUS WECHSEL (Autopilot) ---
+        # --- B: MODUS WECHSEL ---
         elif type == "mode":
             if data == "auto":
                 self._maneuver_cancel("Moduswechsel AUTO")
+                self._hold_until = 0
                 self.mode = "AUTO"
                 print("-> Modus: AUTONOM")
             else:
@@ -303,7 +286,7 @@ class hipe:
                 self._target_speed = 0
                 print("-> Modus: MANUELL")
 
-        # --- H: LENKWINKEL DISKRET SETZEN ---
+        # --- H: LENKWINKEL DISKRET ---
         elif type == "steer_angle":
             try:
                 deg = float(data)
@@ -313,7 +296,38 @@ class hipe:
             except (ValueError, TypeError):
                 print("-> steer_angle: ungültiger Wert:", data)
 
-        # --- D: DISTANZ-MANÖVER ---
+        # --- I: HOLD-DRIVE (fahren solange Heartbeats eintreffen) ---
+        # data = "fwd:55" oder "bwd:40" (Richtung : Leistung in %)
+        elif type == "drive_hold":
+            if self.mode != "MANUAL":
+                return
+            if time.ticks_diff(self._hold_lockout_until, time.ticks_ms()) > 0:
+                return   # veralteter Befehl aus der TCP-Warteschlange -> weg
+            try:
+                parts = data.split(":")
+                direction = -1 if parts[0] == "bwd" else 1
+                pct = int(float(parts[1])) if len(parts) > 1 else self.MAN_SPEED_PCT
+            except (ValueError, TypeError, IndexError):
+                direction, pct = 1, self.MAN_SPEED_PCT
+            pct = max(10, min(100, pct))
+            now = time.ticks_ms()
+            if self._man_active:
+                self._maneuver_cancel("Hold-Drive")
+            if self._hold_until == 0:
+                self._hold_start_ms = now   # neuer Hold -> Boost-Fenster startet
+            self._hold_dir = direction
+            self._hold_pct = pct
+            self.MAN_SPEED_PCT = pct        # Slider setzt auch das Fahrprofil
+            self._hold_until = time.ticks_add(now, self.HOLD_TIMEOUT_MS)
+            self._last_heartbeat = now
+
+        # --- J: HOLD-DRIVE STOPP (Button losgelassen) ---
+        elif type == "drive_stop":
+            self._hold_until = 0
+            self._target_speed = 0.0
+            self._hold_lockout_until = time.ticks_add(time.ticks_ms(), 600)
+
+        # --- D: DISTANZ-MANÖVER (bleibt für Autopilot/REPL nutzbar) ---
         elif type == "drive_dist":
             try:
                 dist = float(data)
@@ -328,13 +342,18 @@ class hipe:
                 return
             self._maneuver_start(abs(dist), 1 if dist > 0 else -1)
 
-        # --- E: INCH (kurzer Vorwärts-Impuls, Ballannäherung) ---
+        # --- E: INCH (Dauer in ms kommt als data) ---
         elif type == "inch":
-            if self._man_active:
-                print("-> inch: Manöver läuft, ignoriert.")
+            if self._man_active or self._hold_until:
+                print("-> inch: Fahrbetrieb aktiv, ignoriert.")
                 return
-            self._inch_until = time.ticks_add(time.ticks_ms(), self.INCH_MS)
-            print("-> Inch: %d%% für %d ms." % (self.INCH_PCT, self.INCH_MS))
+            try:
+                ms = int(float(data))
+            except (ValueError, TypeError):
+                ms = self.INCH_MS_DEFAULT
+            ms = max(self.INCH_MS_MIN, min(self.INCH_MS_MAX, ms))
+            self._inch_until = time.ticks_add(time.ticks_ms(), ms)
+            print("-> Inch: %d%% für %d ms." % (self.INCH_PCT, ms))
 
         # --- F: KILL-SWITCH ---
         elif type == "kill":
@@ -342,6 +361,8 @@ class hipe:
             self.mode = "MANUAL"
             self._target_speed = 0.0
             self._inch_until = 0
+            self._hold_until = 0
+            self._hold_lockout_until = time.ticks_add(time.ticks_ms(), 600)
             print("-> KILL: Antrieb gestoppt, Modus MANUELL.")
 
         # --- G: ODOMETER ZURÜCKSETZEN ---
@@ -349,11 +370,10 @@ class hipe:
             self.reset_distance()
             print("-> Odometer auf 0 gesetzt.")
 
-        # --- C: GREIFER, LOCK & TRIGGER (Weiterleitung an Senior) ---
+        # --- C: GREIFER, LOCK & TRIGGER ---
         elif type in ("arm", "trigger", "jaw", "lock"):
-            # Servo-Aktionen blockieren die Loop kurz (bis ~1.2s) —
-            # vorher den Antrieb sicher stoppen.
             self._target_speed = 0.0
+            self._hold_until = 0
             try:
                 if hasattr(self.drive, "set_percent"):
                     self.drive.set_percent(0)
@@ -370,7 +390,6 @@ class hipe:
                 print("Senior-Modul nicht aktiv.")
 
     def on_heartbeat(self) -> None:
-        """Web-Callback: Heartbeat für Dead-Man aktualisieren."""
         self._last_heartbeat = time.ticks_ms()
         try:
             self.safety.touch_command(self._last_heartbeat)
@@ -382,20 +401,13 @@ class hipe:
     # -------------------------------------------------------------------------
 
     def get_distance_m(self) -> float:
-        """Zurückgelegte Strecke in m seit Start bzw. letztem Reset."""
         return self._dist_m
 
     def reset_distance(self) -> None:
-        """Odometer nullen (Kalibrierfahrt / Trial-Start)."""
         self._dist_m = 0.0
         self._dist_last_ms = time.ticks_ms()
 
     def _update_odometry(self, rpm, safe_pct, now) -> None:
-        """Integriert die Drehzahl über die Loop-Zeit zu einer Strecke.
-
-        Richtung wird gemerkt: bei safe_pct == 0 (Auslauf) zählt die zuletzt
-        kommandierte Richtung weiter.
-        """
         dt_odo = time.ticks_diff(now, self._dist_last_ms)
         self._dist_last_ms = now
 
@@ -407,16 +419,81 @@ class hipe:
         if not (0 < dt_odo < 500):
             return
 
+        if abs(rpm) > self.ODO_MAX_RPM:
+            print("[ODO] Implausible RPM verworfen: %.0f" % rpm)
+            return
+
         step = (abs(rpm) / 60.0) * (dt_odo / 1000.0) \
                * 3.141592653589793 * self.kin["wheel_diameter"]
         self._dist_m += self._odo_dir * step
+
+    # -------------------------------------------------------------------------
+    # UMWELT-SENSORIK (Temperatur + Irradianz für Telemetrie)
+    # -------------------------------------------------------------------------
+
+    def _read_temp_int(self):
+        """NTC über B-Gleichung, konstante Korrektur, als int °C."""
+        try:
+            import math
+            raw = self._ntc.read_u16()
+            v = raw / 65535 * 3.3
+            if v >= 3.29 or v <= 0.01:
+                return None
+            r = 10000 * v / (3.3 - v)
+            t = 1.0 / (1.0 / 298.15 + math.log(r / 10000) / 3950) - 273.15
+            return int(round(t + self.TEMP_OFFSET_C))
+        except Exception:
+            return None
+
+    def _read_irr_int(self, periods=10, timeout_us=5000):
+        """TCS3200 Clear-Kanal: Frequenz über n Perioden -> int uW/cm2.
+
+        Misst mit DEAKTIVIERTEN Interrupts: der Soft-ISR des CurrentMonitor
+        verschluckt sonst Flanken -> Frequenz ~3x unterschätzt (57 statt 180).
+        Timeout kurz (5ms), da IRQs währenddessen aus sind; dunkelste Fläche
+        (~11kHz) braucht <2ms für 10 Perioden.
+        """
+        try:
+            # GP16 wird von einem frozen Modul umkonfiguriert -> Input-Modus
+            # und Clear-Filter vor JEDER Messung neu erzwingen.
+            self._tcs_out = _Pin(16, _Pin.IN)
+            self._tcs_s2.value(1)
+            self._tcs_s3.value(0)
+            out = self._tcs_out
+
+            import machine
+            irq_state = machine.disable_irq()
+            try:
+                deadline = time.ticks_add(time.ticks_us(), timeout_us)
+
+                def wait(level):
+                    while out.value() != level:
+                        if time.ticks_diff(deadline, time.ticks_us()) <= 0:
+                            return False
+                    return True
+
+                if not (wait(0) and wait(1)):
+                    return None
+                t0 = time.ticks_us()
+                for _ in range(periods):
+                    if not (wait(0) and wait(1)):
+                        return None
+                dt = time.ticks_diff(time.ticks_us(), t0)
+            finally:
+                machine.enable_irq(irq_state)
+
+            if dt <= 0:
+                return None
+            freq = 1_000_000 * periods / dt
+            return int(round(freq / self.IRR_RESPONSIVITY))
+        except Exception:
+            return None
 
     # -------------------------------------------------------------------------
     # KOLLISIONSSCHUTZ (ToF, Continuous-Modus, nicht-blockierend)
     # -------------------------------------------------------------------------
 
     def _tof_init(self):
-        """Adresstanz + Init + Start des Continuous-Modus (einmal beim Boot)."""
         try:
             xshut_r = _Pin(14, _Pin.OUT)
             xshut_l = _Pin(15, _Pin.OUT)
@@ -429,14 +506,12 @@ class hipe:
 
             ADDR_DEF, ADDR_FRONT, ADDR_RIGHT = 0x29, 0x2A, 0x2B
 
-            # Front (kein XSHUT) -> 0x2A
             try:
                 i2c.writeto_mem(ADDR_DEF, 0x8A, bytes([ADDR_FRONT]))
             except OSError as e:
                 print("[ToF] Front Adresswechsel fehlgeschlagen:", e)
             time.sleep_ms(10)
 
-            # Right (XSHUT GP14) -> 0x2B
             xshut_r.value(1)
             time.sleep_ms(50)
             try:
@@ -445,7 +520,6 @@ class hipe:
                 print("[ToF] Right Adresswechsel fehlgeschlagen:", e)
             time.sleep_ms(10)
 
-            # Left (XSHUT GP15) -> bleibt auf 0x29 (Default)
             xshut_l.value(1)
             time.sleep_ms(50)
             print("[ToF] Bus:", i2c.scan())
@@ -459,7 +533,6 @@ class hipe:
                 except (OSError, RuntimeError) as e:
                     print("[ToF] %s FAILED (0x%02X): %s" % (name, addr, e))
 
-            # 20ms-High-Speed-Budget setzen (falls der Treiber es anbietet)
             for tof in self._tof_sensors.values():
                 fn = getattr(tof, "set_measurement_timing_budget", None)
                 if callable(fn):
@@ -468,7 +541,6 @@ class hipe:
                     except Exception:
                         pass
 
-            # Continuous-Modus starten
             for name, tof in self._tof_sensors.items():
                 started = False
                 fn = getattr(tof, "start_continuous", None) or getattr(tof, "start", None)
@@ -504,8 +576,6 @@ class hipe:
         return s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2
 
     def _tof_poll(self):
-        """Nicht-blockierend: pro Sensor Data-Ready prüfen (1 Registerbyte);
-        nur fertige Ergebnisse auslesen (~1-2ms). Es wird NIE gewartet."""
         for name, addr in self._tof_addr.items():
             try:
                 ready = self._tof_i2c.readfrom_mem(addr, 0x13, 1)[0] & 0x07
@@ -513,25 +583,21 @@ class hipe:
                     continue
                 data = self._tof_i2c.readfrom_mem(addr, 0x14, 12)
                 raw = (data[10] << 8) | data[11]
-                self._tof_i2c.writeto_mem(addr, 0x0B, b"\x01")  # Interrupt löschen
+                self._tof_i2c.writeto_mem(addr, 0x0B, b"\x01")
             except OSError:
                 continue
 
-            # Sentinel (8190/8191 = kein Ziel) und implausible Werte verwerfen
             if raw >= 8190 or raw < 10:
                 continue
             buf = self._tof_bufs[name]
             buf.append(self._tof_correct(name, raw))
             if len(buf) > 5:
                 buf.pop(0)
-            # Median erst ab 3 Werten als gültig betrachten
             if len(buf) >= 3:
                 self._tof_vals[name] = self._median(buf)
 
     def _tof_check_proximity(self):
-        """Setzt/löst self._tof_blocked anhand der Mediane, mit Hysterese."""
         jaw_open = bool(self.senior and getattr(self.senior, "jaw_open", False))
-
         margin = self.TOF_RELEASE_HYST_MM if self._tof_blocked else 0
 
         blocked = False
@@ -555,9 +621,7 @@ class hipe:
         self._tof_blocked = blocked
 
     def _tof_presweep_cap(self, target_m):
-        """Blockierender Vor-Check (max ~0.7s): Front-Median frisch aufbauen
-        und das Vorwärts-Ziel auf die freie Strecke begrenzen.
-        Rückwärtsfahrten haben KEINEN Sensor — dort gibt es keinen Cap."""
+        """Blockierender Vor-Check (max ~0.7s) für drive_dist vorwärts."""
         if not self._tof_sensors:
             return target_m
         self._tof_bufs["front"] = []
@@ -583,17 +647,16 @@ class hipe:
         return target_m
 
     # -------------------------------------------------------------------------
-    # DISTANZ-MANÖVER (drive_dist)
+    # DISTANZ-MANÖVER (drive_dist — für Autopilot/REPL)
     # -------------------------------------------------------------------------
 
     def _maneuver_start(self, target_m, direction) -> None:
-        """Startet ein Distanz-Manöver relativ zum aktuellen Odometer-Stand."""
         if direction > 0 and _TOF_HW:
             target_m = self._tof_presweep_cap(target_m)
             if target_m <= 0:
                 return
 
-        self._man_ref_m    = self._dist_m   # Referenz merken, NICHT resetten
+        self._man_ref_m    = self._dist_m
         self._man_target_m = target_m
         self._man_dir      = direction
         self._man_start_ms = time.ticks_ms()
@@ -603,7 +666,6 @@ class hipe:
               % (target_m, "vor" if direction > 0 else "zurueck", self._dist_m))
 
     def _maneuver_cancel(self, reason) -> None:
-        """Bricht ein laufendes Manöver ab und stoppt den Antrieb."""
         if not self._man_active:
             return
         self._man_active = False
@@ -613,13 +675,11 @@ class hipe:
               % (reason, delta, self._man_target_m))
 
     def _maneuver_tick(self, now) -> None:
-        """Ein Schritt der Manöver-Zustandsmaschine (nicht-blockierend)."""
         delta = abs(self._dist_m - self._man_ref_m)
 
         if self._man_state == "RUN":
             remaining = self._man_target_m - delta
 
-            # Ziel erreicht -> Motor aus, Auslauf beobachten
             if remaining <= 0:
                 self._target_speed = 0.0
                 self._man_state = "COAST"
@@ -628,23 +688,20 @@ class hipe:
                       % (delta, time.ticks_diff(now, self._man_start_ms)))
                 return
 
-            # Watchdog: Ziel nicht erreichbar (Blockade, Encoderausfall)
             if time.ticks_diff(now, self._man_start_ms) > self.MAN_TIMEOUT_MS:
                 self._maneuver_cancel("Timeout")
                 return
 
-            # Geschwindigkeitsprofil: Boost -> Cruise -> Kriechgang
             if time.ticks_diff(now, self._man_start_ms) < self.MAN_BOOST_MS:
                 pct = self.MAN_BOOST_PCT
             elif self._man_target_m <= self.MAN_SLOW_ZONE_M:
-                pct = self.MAN_SPEED_PCT          # kurze Ziele: kein Kriechgang
+                pct = self.MAN_SPEED_PCT
             elif remaining <= self.MAN_SLOW_ZONE_M:
                 pct = self.MAN_SPEED_SLOW_PCT
             else:
                 pct = self.MAN_SPEED_PCT
             self._target_speed = float(self._man_dir * pct)
-            # HINWEIS: Lenkung wird bewusst NICHT zentriert —
-            # drive_dist fährt entlang des eingestellten Lenkwinkels (Bogen).
+            # Lenkung wird bewusst NICHT zentriert (Bogenfahrt möglich)
             self._last_heartbeat = now
 
         elif self._man_state == "COAST":
@@ -661,7 +718,6 @@ class hipe:
     # -------------------------------------------------------------------------
 
     def get_telemetry(self) -> dict:
-        """Erstellt Telemetrie-Daten für das Frontend."""
         try:
             rpm = self.drive.get_rpm()
         except (AttributeError, OSError, RuntimeError) as e:
@@ -688,6 +744,8 @@ class hipe:
                 "left":  round(self._tof_vals["left"])  if self._tof_vals["left"]  is not None else None,
                 "right": round(self._tof_vals["right"]) if self._tof_vals["right"] is not None else None,
             },
+            "temp": self._temp_c,     # int °C (alle ~2.5s aktualisiert)
+            "irr": self._irr,         # int uW/cm2 (alle ~2.5s aktualisiert)
             "ts": time.ticks_ms(),
         }
         if self.deathmatch_enabled:
@@ -702,25 +760,24 @@ class hipe:
     # -------------------------------------------------------------------------
 
     def run(self) -> None:
-        """Nicht-blockierende Hauptschleife.
-
-        Pro Tick: 1) Webserver, 2) Autopilot, 2b) Manöver, 2c) Inch,
-        3) Strom, 4) Dead-Man, 5) Deathmatch, 6) Safety, 6b) Odometrie,
-        6c) ToF-Schutz, 7) Hardware-Ausgabe, 8) Takt, 9) LED.
-        """
-
         self.current.calibrate_zero()
-
         next_tick = time.ticks_ms()
 
         while True:
-            # 1) Webserver (holt manuelle Eingaben)
-            try:
-                self.web.poll_once()
-            except OSError as e:
-                print("web.poll_once failed:", e)
+            # 1) Webserver
+            # 1) Webserver: Backlog LEEREN statt nur 1 Request/Tick —
+            #    gepufferte Steuerbefehle wirken sonst sekundenlang nach
+            #    (Motor-Nachlauf nach Loslassen!)
+            for _ in range(8):
+                try:
+                    handled = self.web.poll_once()
+                except OSError as e:
+                    print("web.poll_once failed:", e)
+                    break
+                if not handled:
+                    break
 
-            # 2) AUTOPILOT (SENIOR) - PRIORITÄT VOR HARDWARE
+            # 2) AUTOPILOT
             if self.mode == "AUTO" and self.senior:
                 try:
                     rpm = self.drive.get_rpm()
@@ -735,11 +792,11 @@ class hipe:
 
             now = time.ticks_ms()
 
-            # 2b) Distanz-Manöver (nur im MANUAL-Modus)
+            # 2b) Distanz-Manöver
             if self._man_active and self.mode == "MANUAL":
                 self._maneuver_tick(now)
 
-            # 2c) Inch-Impuls (zeitbegrenzter Schub; ToF-Schutz greift normal)
+            # 2c) Inch-Impuls
             if self._inch_until:
                 if time.ticks_diff(self._inch_until, now) > 0:
                     self._target_speed = float(self.INCH_PCT)
@@ -748,7 +805,26 @@ class hipe:
                     self._inch_until = 0
                     self._target_speed = 0.0
 
-            # 3) Strommessung periodisch auswerten
+            # 2d) HOLD-DRIVE: fahren solange Heartbeats frisch sind
+            if self._hold_until:
+                if time.ticks_diff(self._hold_until, now) > 0:
+                    if time.ticks_diff(now, self._hold_start_ms) < self.MAN_BOOST_MS:
+                        pct_eff = max(self._hold_pct, self.MAN_BOOST_PCT)
+                    else:
+                        pct_eff = self._hold_pct
+                    self._target_speed = float(self._hold_dir * pct_eff)
+                    self._last_heartbeat = now
+                else:
+                    self._hold_until = 0
+                    self._target_speed = 0.0
+
+            # 2e) Umwelt-Sensorik (Temp + Irradianz, alle ENV_PERIOD_MS)
+            if self._env_hw and time.ticks_diff(now, self._env_last_ms) >= self.ENV_PERIOD_MS:
+                self._env_last_ms = now
+                self._temp_c = self._read_temp_int()
+                self._irr = self._read_irr_int()
+
+            # 3) Strommessung
             if time.ticks_diff(now, self._last_adc) >= 120:
                 try:
                     self._cur_cache = self.current.read(window_ms=200, want=("avg",))
@@ -780,7 +856,7 @@ class hipe:
                 except (AttributeError, RuntimeError) as e:
                     print("deathmatch tick failed:", e)
 
-            # 6) Safety anwenden
+            # 6) Safety
             try:
                 rpm_for_safety = self.drive.get_rpm()
             except (AttributeError, RuntimeError, OSError):
@@ -801,17 +877,19 @@ class hipe:
                 print("safety.enforce failed:", e)
                 safe_pct, status = int(self._target_speed), "OK"
 
-            # 6b) Odometrie mit der frisch gelesenen Drehzahl aktualisieren
+            # 6b) Odometrie
             self._update_odometry(rpm_for_safety, safe_pct, now)
 
-            # 6c) ToF-Kollisionsschutz (passiv, nicht-blockierend):
-            #     sperrt NUR Vorwärts-PWM; rückwärts und Lenkung bleiben frei.
+            # 6c) ToF-Kollisionsschutz
             if _TOF_HW and self._tof_sensors:
                 self._tof_poll()
                 self._tof_check_proximity()
                 if self._tof_blocked:
                     if self._man_active and self._man_dir > 0:
                         self._maneuver_cancel("Kollisionsschutz")
+                    if self._hold_until and self._hold_dir > 0:
+                        self._hold_until = 0
+                        self._target_speed = 0.0
                     if self.mode == "AUTO":
                         self.mode = "MANUAL"
                         self._target_speed = 0.0
@@ -851,7 +929,7 @@ class hipe:
                 if delay < -5:
                     next_tick = time.ticks_ms()
 
-            # 9) LED-Muster (fast = nur AP, slow = Client/Heartbeat aktiv)
+            # 9) LED-Muster
             has_client = False
             try:
                 stations = self.net.stations()

@@ -10,54 +10,45 @@
       --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb;
       --accent:#38bdf8; --accent2:#34d399; --warn:#f59e0b; --danger:#ef4444;
     }
-
     *{box-sizing:border-box;user-select:none;-webkit-user-select:none;}
     html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100%;}
     .wrap{max-width:920px;margin:0 auto;padding:16px 16px 96px;}
-
     header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;}
     h1{font-size:20px;margin:0;}
     .h-grp{display:flex;align-items:center;gap:12px;}
     .chip{font-size:12px;color:var(--bg);background:var(--accent);padding:4px 12px;border-radius:999px;font-weight:600;white-space:nowrap;}
-
     #killBtn{position:fixed;right:16px;bottom:76px;z-index:10000;background:var(--danger);color:#fff;border:2px solid rgba(255,255,255,0.25);border-radius:14px;padding:14px 20px;font-size:15px;font-weight:800;letter-spacing:1px;cursor:pointer;box-shadow:0 6px 18px rgba(239,68,68,0.45);}
     #killBtn:active{transform:scale(0.95);}
-
     details.section{background:var(--panel);border:1px solid rgba(255,255,255,0.05);border-radius:16px;margin-bottom:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);overflow:hidden;}
     details.section > summary{list-style:none;cursor:pointer;padding:14px 16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;}
     details.section > summary::-webkit-details-marker{display:none;}
     details.section > summary::after{content:'▸';color:var(--muted);transition:transform 0.2s;}
     details.section[open] > summary::after{transform:rotate(90deg);}
     .section-body{padding:0 16px 16px;}
-
     .form-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
-    .form-row label{font-size:13px;color:var(--muted);min-width:110px;}
-    input[type=number]{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--text);padding:10px 12px;font-size:15px;width:110px;}
+    .form-row label{font-size:13px;color:var(--muted);min-width:90px;}
+    input[type=number]{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--text);padding:10px 12px;font-size:15px;width:90px;}
     select{background:var(--panel);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--text);padding:10px 12px;font-size:15px;}
-
     .btn{padding:10px 18px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:var(--text);font-weight:bold;font-size:14px;cursor:pointer;transition:0.2s;}
     .btn:active{background:var(--accent);color:var(--bg);transform:scale(0.95);}
     .btn.primary{background:var(--accent);color:var(--bg);}
     .btn.toggled{background:var(--accent2);color:var(--bg);}
-
+    .btn.rec{background:var(--danger);color:#fff;}
+    #holdBtn{width:100%;padding:22px;font-size:17px;letter-spacing:1px;touch-action:none;}
+    #holdBtn.driving{background:var(--accent2);color:var(--bg);}
     .sub-title{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #334155;padding-bottom:6px;margin:18px 0 12px;}
     .sub-title:first-child{margin-top:0;}
-
-    .tele{display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;}
+    .tele{display:grid;grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));gap:8px;}
     .kv{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);padding:8px 10px;border-radius:10px;}
     .k{font-size:10px;color:var(--muted);margin-bottom:2px;}
     .v{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;}
     .ok{color:var(--accent2);} .bad{color:var(--danger);} .mid{color:var(--warn);}
-
     .color-swatch{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);vertical-align:middle;margin-right:6px;background:#334155;}
-    .placeholder{color:var(--muted);font-size:13px;text-align:center;padding:24px 0;}
-
+    .stats{font-size:12px;color:var(--muted);line-height:1.7;font-variant-numeric:tabular-nums;margin-top:10px;}
     .statusbar{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid rgba(255,255,255,0.08);display:grid;grid-template-columns:repeat(5, 1fr);gap:8px;padding:8px 12px;z-index:9000;}
     .statusbar .kv{text-align:center;}
-
     @keyframes blinkPulse{from{opacity:.35;transform:scale(1.00);}to{opacity:1;transform:scale(1.03);}}
     .blink{animation:blinkPulse .8s ease-in-out infinite alternate;}
-
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(5px);z-index:9999;display:flex;align-items:center;justify-content:center;transition:opacity 0.2s;visibility:visible;}
     .overlay.hidden{opacity:0;visibility:hidden;pointer-events:none;}
     .overlay-content{background:var(--panel);width:90%;max-width:400px;max-height:90vh;overflow-y:auto;padding:24px;border-radius:20px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 20px 50px rgba(0,0,0,0.6);}
@@ -66,7 +57,6 @@
     .close-btn{background:none;border:none;color:var(--text);font-size:28px;padding:0 8px;cursor:pointer;}
     .tool-btn{background:none;border:none;font-size:22px;cursor:pointer;padding:4px;filter:grayscale(100%);transition:0.3s;}
     .tool-btn:hover{filter:grayscale(0%);transform:scale(1.1);}
-
     .slider-row{margin-bottom:24px;}
     .slider-row label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px;}
     input[type=range]{width:100%;cursor:pointer;height:6px;background:#334155;border-radius:3px;appearance:none;}
@@ -75,7 +65,6 @@
     input.sl-speed::-webkit-slider-thumb{background:var(--accent2);}
     input.sl-hw{accent-color:var(--warn);}
     input.sl-hw::-webkit-slider-thumb{background:var(--warn);}
-
     footer{font-size:11px;color:var(--muted);text-align:center;margin-top:8px;}
   </style>
 </head>
@@ -89,25 +78,31 @@
       </div>
     </header>
 
-    <!-- ================= MANUAL CONTROL (open by default) ================= -->
+    <!-- ================= MANUAL CONTROL ================= -->
     <details class="section" open>
       <summary>Manual Control</summary>
       <div class="section-body">
 
-        <p class="sub-title">Drive a distance</p>
+        <p class="sub-title">Drive (hold button)</p>
         <div class="form-row">
-          <label for="driveDist">Distance (cm)</label>
-          <input type="number" id="driveDist" min="0" step="5" value="50">
           <select id="driveDir">
             <option value="fwd">Forward</option>
             <option value="bwd">Backward</option>
           </select>
-          <button class="btn primary" onclick="cmdDrive()">Drive</button>
+          <label style="min-width:auto;">Power <b id="pwrVal">55</b>%</label>
+        </div>
+        <div style="padding:0 4px 12px;">
+          <input type="range" id="pwrSlider" min="10" max="100" value="55" class="sl-speed">
+        </div>
+        <div class="form-row">
+          <button class="btn primary" id="holdBtn" oncontextmenu="return false">HOLD TO DRIVE</button>
         </div>
 
         <p class="sub-title">Inch forward</p>
         <div class="form-row">
-          <button class="btn" onclick="sendAux('inch', '1')">Inch (ball approach)</button>
+          <label for="inchMs">Duration (ms)</label>
+          <input type="number" id="inchMs" min="30" max="500" step="10" value="80">
+          <button class="btn" onclick="cmdInch()">Inch (ball approach)</button>
         </div>
 
         <p class="sub-title">Steering angle</p>
@@ -128,15 +123,13 @@
       </div>
     </details>
 
-    <!-- ================= AUTO-NAVIGATION TELEMETRY ================= -->
+    <!-- ================= AUTO-NAVIGATION ================= -->
     <details class="section">
       <summary>Auto-Navigation</summary>
       <div class="section-body">
-
         <div class="form-row">
           <button class="btn" id="autoBtn" onclick="toggleAuto()">Enable automatic navigation</button>
         </div>
-
         <div class="tele">
           <div class="kv"><div class="k">ToF front (mm)</div><div class="v" id="tofFront">–</div></div>
           <div class="kv"><div class="k">ToF left (mm)</div><div class="v" id="tofLeft">–</div></div>
@@ -144,7 +137,6 @@
           <div class="kv"><div class="k">Ground color</div><div class="v"><span class="color-swatch" id="groundSwatch"></span><span id="groundColor">–</span></div></div>
           <div class="kv"><div class="k">Navigation mode</div><div class="v" id="navMode">MANUAL</div></div>
         </div>
-
       </div>
     </details>
 
@@ -154,13 +146,27 @@
       <div class="section-body">
 
         <div class="tele">
-          <div class="kv"><div class="k">Traveled distance (m)</div><div class="v" id="distance">0.00</div></div>
+          <div class="kv"><div class="k">Distance D(t) (m)</div><div class="v" id="distance">0.00</div></div>
+          <div class="kv"><div class="k">ø velocity (m/s)</div><div class="v" id="avgVel">–</div></div>
+          <div class="kv"><div class="k">Temp T(t) (°C)</div><div class="v" id="tempC">–</div></div>
+          <div class="kv"><div class="k">Irradiance I(t) (µW/cm²)</div><div class="v" id="irrV">–</div></div>
+          <div class="kv"><div class="k">I motor (A)</div><div class="v" id="iMot">–</div></div>
+          <div class="kv"><div class="k">I system (A)</div><div class="v" id="iSys">–</div></div>
+          <div class="kv"><div class="k">P est. (W)</div><div class="v" id="pEst">–</div></div>
+          <div class="kv"><div class="k">Samples</div><div class="v" id="recN">0</div></div>
         </div>
 
-        <div class="placeholder">
-          Graphs for brightness, current, voltage, power, temperature
-          and side distances L/R will appear here.
+        <p class="sub-title">Recording &amp; statistics</p>
+        <div class="form-row">
+          <button class="btn" id="recBtn" onclick="toggleRec()">Start recording</button>
+          <button class="btn" onclick="resetRec()">Reset</button>
+          <button class="btn" onclick="downloadCsv()">Download CSV</button>
+          <button class="btn" onclick="resetDistance()">Reset odometer</button>
         </div>
+        <div class="stats" id="statsBox">No data recorded yet.</div>
+        
+        <p class="sub-title">Live graphs</p>
+        <canvas id="graphs" width="860" height="432" style="width:100%;background:rgba(255,255,255,0.02);border-radius:10px;"></canvas>
 
       </div>
     </details>
@@ -184,14 +190,7 @@
         <h2>⚙️ Chassis Setup</h2>
         <button onclick="closeOverlays()" class="close-btn">×</button>
       </div>
-
-      <h3 style="font-size:12px; color:var(--accent2); text-transform:uppercase; border-bottom:1px solid #334155; margin-bottom:15px;">Drive (software)</h3>
-      <div class="slider-row">
-        <label>Throttle limit (max speed) <span style="color:var(--accent2)"><b id="d-spd">100</b>%</span></label>
-        <input type="range" class="sl-speed" min="10" max="100" value="100" oninput="setSpeedLimit(this.value)">
-      </div>
-
-      <h3 style="font-size:12px; color:var(--warn); text-transform:uppercase; border-bottom:1px solid #334155; margin:25px 0 15px;">Steering (hardware)</h3>
+      <h3 style="font-size:12px; color:var(--warn); text-transform:uppercase; border-bottom:1px solid #334155; margin:0 0 15px;">Steering (hardware)</h3>
       <div class="slider-row">
         <label>Left stop (min) <span style="color:var(--warn)"><b id="d-min">-90</b>°</span></label>
         <input type="range" class="sl-hw" min="-90" max="0" value="-90" oninput="setSteer('min', this.value)">
@@ -204,7 +203,6 @@
         <label>Trim (straight ahead) <span style="color:var(--warn)"><b id="d-trim">0</b>°</span></label>
         <input type="range" class="sl-hw" min="-20" max="20" value="0" oninput="setSteer('trim', this.value)">
       </div>
-
       <p style="font-size:11px; color:var(--muted); text-align:center;">
         Steering values are sent directly to the controller.
       </p>
@@ -212,17 +210,20 @@
   </div>
 
   <script>
-    const CFG = { telemetryMsIdle: 500 };
+    // ================== CONFIG ==================
+    const CFG = {
+      telemetryMsIdle: 500,
+      holdRepeatMs: 180,     // drive_hold heartbeat interval while pressed
+      V_NOM: 7.4            // nominal battery voltage for P = V*I estimate
+    };
     const state = { lastTele: 0, teleBusy: false };
-    const CONF = { speedLim: 100, stMin: -90, stMax: 90, stTrim: 0 };
+    const CONF = { stMin: -90, stMax: 90, stTrim: 0 };
 
     (function init() {
       const ls = localStorage;
-      if (ls.getItem('h_spd'))     CONF.speedLim = parseInt(ls.getItem('h_spd'));
       if (ls.getItem('h_st_min'))  CONF.stMin = parseInt(ls.getItem('h_st_min'));
       if (ls.getItem('h_st_max'))  CONF.stMax = parseInt(ls.getItem('h_st_max'));
       if (ls.getItem('h_st_trim')) CONF.stTrim = parseInt(ls.getItem('h_st_trim'));
-      updateUIVal('d-spd', CONF.speedLim);
       updateUIVal('d-min', CONF.stMin);
       updateUIVal('d-max', CONF.stMax);
       updateUIVal('d-trim', CONF.stTrim);
@@ -238,12 +239,6 @@
     function openOverlay(id) { closeOverlays(); document.getElementById('ov-' + id).classList.remove('hidden'); }
     function closeOverlays() { document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden')); }
 
-    function setSpeedLimit(val) {
-      CONF.speedLim = parseInt(val);
-      document.getElementById('d-spd').innerText = val;
-      localStorage.setItem('h_spd', val);
-    }
-
     let stTimer = null;
     function setSteer(key, val) {
       val = parseInt(val);
@@ -258,14 +253,51 @@
       }, 200);
     }
 
-    function cmdDrive() {
-      const distCm = parseFloat(document.getElementById('driveDist').value);
-      const dir = document.getElementById('driveDir').value;
-      if (isNaN(distCm) || distCm <= 0) return;
-      const distM = distCm / 100;
-      sendAux('drive_dist', (dir === 'bwd') ? -distM : distM);
+    // ================== HOLD-TO-DRIVE ==================
+    // While pressed: send drive_hold heartbeats. Firmware stops itself
+    // if none arrive within its timeout — connection-loss safe.
+    let holdTimer = null;
+
+    (function initHold() {
+      const btn = document.getElementById('holdBtn');
+      const slider = document.getElementById('pwrSlider');
+      const pwrVal = document.getElementById('pwrVal');
+
+      slider.addEventListener('input', () => { pwrVal.textContent = slider.value; });
+
+      function sendHold() {
+        const dir = document.getElementById('driveDir').value;
+        sendAux('drive_hold', dir + ':' + slider.value);
+      }
+      function start(e) {
+        e.preventDefault();
+        if (holdTimer) return;
+        btn.classList.add('driving');
+        btn.textContent = 'DRIVING...';
+        sendHold();
+        holdTimer = setInterval(sendHold, CFG.holdRepeatMs);
+      }
+      function stop() {
+        if (!holdTimer) return;
+        clearInterval(holdTimer);
+        holdTimer = null;
+        btn.classList.remove('driving');
+        btn.textContent = 'HOLD TO DRIVE';
+        sendAux('drive_stop', '1');
+      }
+      btn.addEventListener('pointerdown', start);
+      btn.addEventListener('pointerup', stop);
+      btn.addEventListener('pointercancel', stop);
+      btn.addEventListener('pointerleave', stop);
+      window.addEventListener('blur', stop);
+    })();
+
+    function cmdInch() {
+      const ms = parseInt(document.getElementById('inchMs').value);
+      sendAux('inch', isNaN(ms) ? 80 : ms);
     }
 
+    // ================== STEERING SLIDER ==================
     const STEER_SNAPS = [-90, -45, -30, 0, 30, 45, 90];
     function snapToNearest(val) {
       let best = STEER_SNAPS[0];
@@ -274,7 +306,6 @@
       }
       return best;
     }
-
     (function initSteerSlider() {
       const sl = document.getElementById('steerSlider');
       const lbl = document.getElementById('steerDeg');
@@ -287,6 +318,7 @@
       });
     })();
 
+    // ================== JAW & LOCK ==================
     let jawOpen = false;
     function toggleJaw() {
       jawOpen = !jawOpen;
@@ -295,7 +327,6 @@
       btn.classList.toggle('toggled', jawOpen);
       sendAux('jaw', jawOpen ? 'open' : 'close');
     }
-
     let lockEngaged = true;
     function toggleLock() {
       lockEngaged = !lockEngaged;
@@ -307,6 +338,7 @@
 
     function resetDistance() { sendAux('dist_reset', '1'); }
 
+    // ================== AUTO NAV ==================
     let autoMode = false;
     function toggleAuto() {
       autoMode = !autoMode;
@@ -320,12 +352,144 @@
       document.getElementById('navMode').textContent = autoMode ? 'AUTO' : 'MANUAL';
     }
 
+    // ================== KILL ==================
     function killSwitch() {
       sendAux('kill', '1');
       sendAux('mode', 'manual');
       if (autoMode) { autoMode = false; applyAutoUI(); }
     }
 
+    // ================== RECORDING & STATISTICS ==================
+    // Samples every telemetry frame while recording. All analysis
+    // client-side; Pico only ships raw values.
+    const rec = { on: false, rows: [] };
+
+    function toggleRec() {
+      rec.on = !rec.on;
+      const btn = document.getElementById('recBtn');
+      btn.textContent = rec.on ? 'Stop recording' : 'Start recording';
+      btn.classList.toggle('rec', rec.on);
+    }
+    function resetRec() {
+      rec.rows = [];
+      document.getElementById('recN').textContent = '0';
+      document.getElementById('avgVel').textContent = '–';
+      document.getElementById('statsBox').textContent = 'No data recorded yet.';
+    }
+    function mean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; }
+    function sd(a) {
+      if (a.length < 2) return null;
+      const m = mean(a);
+      return Math.sqrt(a.reduce((s, v) => s + (v - m) * (v - m), 0) / (a.length - 1));
+    }
+    const fmt = (v, d) => (v === null || v === undefined || isNaN(v)) ? '–' : v.toFixed(d);
+
+    function recSample(d) {
+      const im = d.current ? d.current.motor : null;
+      const is = d.current ? d.current.system : null;
+      const p = (is !== null && is !== undefined) ? CFG.V_NOM * is : null;
+      rec.rows.push({
+        t: Date.now(),
+        dist: (typeof d.distance === 'number') ? d.distance : null,
+        l: (d.tof && typeof d.tof.left === 'number') ? d.tof.left : null,
+        r: (d.tof && typeof d.tof.right === 'number') ? d.tof.right : null,
+        temp: (typeof d.temp === 'number') ? d.temp : null,
+        irr: (typeof d.irr === 'number') ? d.irr : null,
+        im: (typeof im === 'number') ? im : null,
+        is: (typeof is === 'number') ? is : null,
+        p: p
+      });
+      updateStats();
+      
+      if (rec.rows.length > 3600) rec.rows.shift();   // ~30 min cap
+      drawGraphs();
+    }
+
+    function drawGraphs() {
+      const cv = document.getElementById('graphs');
+      const ctx = cv.getContext('2d');
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      const series = [
+        { key: 'dist', label: 'D(t) m',    color: '#38bdf8', d: 2 },
+        { key: 'l',    label: 'd_L mm',    color: '#34d399', d: 0 },
+        { key: 'r',    label: 'd_R mm',    color: '#f59e0b', d: 0 },
+        { key: 'temp', label: 'T °C',      color: '#ef4444', d: 0 },
+        { key: 'irr',  label: 'I µW/cm²',  color: '#a78bfa', d: 0 },
+        { key: 'p',    label: 'P est. W',  color: '#e5e7eb', d: 1 },
+      ];
+      const H = cv.height / series.length;
+      series.forEach((s, i) => {
+        const pts = rec.rows.map(r => r[s.key]);
+        const y0 = i * H;
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.strokeRect(0, y0 + 2, cv.width, H - 4);
+        const vals = pts.filter(v => v !== null);
+        ctx.fillStyle = s.color;
+        ctx.font = '11px sans-serif';
+        if (vals.length < 2) { ctx.fillText(s.label + ': –', 6, y0 + 14); return; }
+        let mn = vals[0], mx = vals[0];
+        for (const v of vals) { if (v < mn) mn = v; if (v > mx) mx = v; }
+        if (mx === mn) { mx += 1; mn -= 1; }
+        ctx.beginPath();
+        ctx.strokeStyle = s.color;
+        let started = false;
+        pts.forEach((v, k) => {
+          if (v === null) return;
+          const x = k / (pts.length - 1) * cv.width;
+          const y = y0 + (H - 8) * (1 - (v - mn) / (mx - mn)) + 4;
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.fillText(s.label + ': ' + vals[vals.length - 1].toFixed(s.d) +
+                     '  [' + mn.toFixed(s.d) + ' … ' + mx.toFixed(s.d) + ']', 6, y0 + 14);
+      });
+    }
+
+    function updateStats() {
+      const rows = rec.rows;
+      document.getElementById('recN').textContent = rows.length;
+      if (rows.length < 2) return;
+
+      const first = rows[0], last = rows[rows.length - 1];
+      const dtS = (last.t - first.t) / 1000;
+      if (dtS > 0 && first.dist !== null && last.dist !== null) {
+        document.getElementById('avgVel').textContent = fmt(Math.abs(last.dist - first.dist) / dtS, 3);
+      }
+
+      const Ls = rows.map(r => r.l).filter(v => v !== null);
+      const Rs = rows.map(r => r.r).filter(v => v !== null);
+      const Ts = rows.map(r => r.temp).filter(v => v !== null);
+      const Is = rows.map(r => r.irr).filter(v => v !== null);
+      const Ps = rows.map(r => r.p).filter(v => v !== null);
+      const Wtot = mean(Ps) !== null ? mean(Ps) * dtS : null;  // W_total ≈ P̄ · t
+
+      document.getElementById('statsBox').innerHTML =
+        'd_left:&nbsp; x̄=' + fmt(mean(Ls),1) + ' mm, s=' + fmt(sd(Ls),1) +
+          ', min=' + fmt(Ls.length?Math.min(...Ls):null,0) + ', max=' + fmt(Ls.length?Math.max(...Ls):null,0) + '<br>' +
+        'd_right: x̄=' + fmt(mean(Rs),1) + ' mm, s=' + fmt(sd(Rs),1) +
+          ', min=' + fmt(Rs.length?Math.min(...Rs):null,0) + ', max=' + fmt(Rs.length?Math.max(...Rs):null,0) + '<br>' +
+        'T:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; x̄=' + fmt(mean(Ts),1) + ' °C, s=' + fmt(sd(Ts),2) + '<br>' +
+        'I_irr:&nbsp;&nbsp; x̄=' + fmt(mean(Is),0) + ' µW/cm², s=' + fmt(sd(Is),1) + '<br>' +
+        'P̄=' + fmt(mean(Ps),2) + ' W (V=' + CFG.V_NOM + 'V est.), W_total≈' + fmt(Wtot,1) + ' J, t=' + fmt(dtS,1) + ' s';
+    }
+
+    function downloadCsv() {
+      let csv = '# P and W estimated with V_NOM=' + CFG.V_NOM + 'V (no voltage sensor)\n';
+      csv += 't_ms,distance_m,tof_left_mm,tof_right_mm,temp_c,irr_uw_cm2,i_motor_a,i_system_a,p_est_w\n';
+      const t0 = rec.rows.length ? rec.rows[0].t : 0;
+      for (const r of rec.rows) {
+        csv += [r.t - t0, r.dist, r.l, r.r, r.temp, r.irr, r.im, r.is,
+                r.p === null ? '' : r.p.toFixed(3)].map(v => v === null ? '' : v).join(',') + '\n';
+      }
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'picocar_telemetry.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // ================== UI REFERENCES ==================
     const ui = {
       rpm: document.getElementById('rpm'),
       safe: document.getElementById('safety'),
@@ -339,10 +503,15 @@
       groundSwatch: document.getElementById('groundSwatch'),
       navMode: document.getElementById('navMode'),
       distance: document.getElementById('distance'),
-      body: document.getElementById('bodyEl'),
+      tempC: document.getElementById('tempC'),
+      irrV: document.getElementById('irrV'),
+      iMot: document.getElementById('iMot'),
+      iSys: document.getElementById('iSys'),
+      pEst: document.getElementById('pEst'),
       chip: document.getElementById('netChip')
     };
 
+    // ================== TELEMETRY LOOP ==================
     setInterval(() => {
       const now = Date.now();
       if (!state.teleBusy && (now - state.lastTele > CFG.telemetryMsIdle)) sendTelemetry();
@@ -364,18 +533,28 @@
           ui.oSpeed.className = (Number(d.speed_safe ?? 0) === Number(d.speed_target ?? 0)) ? 'v ok' : 'v mid';
           if (typeof d.steer_target === 'number') ui.tSteer.textContent = d.steer_target;
 
-          const safetyText = d.safety ?? d.safety_raw ?? '-';
-          const safetyRaw = d.safety_raw ?? d.safety ?? '-';
-          const isDead = safetyRaw === 'DEAD';
+          const safetyText = d.safety ?? '-';
+          const isDead = safetyText === 'DEAD';
           ui.safe.textContent = safetyText;
-          if (safetyRaw === 'OK' || safetyText === 'OK') ui.safe.className = 'v ok';
-          else if (safetyRaw === 'WARN' || safetyText === 'WARN') ui.safe.className = 'v mid';
-          else if (isDead || safetyRaw === 'TIMEOUT' || safetyText === 'TIMEOUT' || safetyRaw === 'HARD_ILIM' || safetyText === 'HARD_ILIM') ui.safe.className = 'v bad';
+          if (safetyText === 'OK') ui.safe.className = 'v ok';
+          else if (safetyText === 'WARN') ui.safe.className = 'v mid';
+          else if (isDead || safetyText === 'TIMEOUT' || safetyText === 'HARD_ILIM') ui.safe.className = 'v bad';
           else ui.safe.className = 'v mid';
           document.body.classList.toggle('blink', isDead);
           ui.chip.classList.toggle('blink', isDead);
 
           if (typeof d.distance === 'number') ui.distance.textContent = d.distance.toFixed(2);
+          if (typeof d.temp === 'number') ui.tempC.textContent = d.temp;
+          if (typeof d.irr === 'number') ui.irrV.textContent = d.irr;
+
+          if (d.current) {
+            if (typeof d.current.motor === 'number') ui.iMot.textContent = d.current.motor.toFixed(2);
+            if (typeof d.current.system === 'number') ui.iSys.textContent = d.current.system.toFixed(2);
+            if (typeof d.current.system === 'number') {
+              ui.pEst.textContent = (CFG.V_NOM * d.current.system).toFixed(1);
+            }
+          }
+
           if (d.tof) {
             ui.tofFront.textContent = (typeof d.tof.front === 'number') ? d.tof.front : '–';
             ui.tofLeft.textContent  = (typeof d.tof.left  === 'number') ? d.tof.left  : '–';
@@ -393,6 +572,8 @@
             btn.textContent = autoMode ? 'Disable automatic navigation' : 'Enable automatic navigation';
             btn.classList.toggle('toggled', autoMode);
           }
+
+          if (rec.on) recSample(d);
         })
         .catch(() => setNet(false))
         .finally(() => { state.teleBusy = false; });
