@@ -137,7 +137,7 @@ class hipe:
             center_us=1500, deadband_us=10,
             angle_min=-90, angle_max=90,
             trim_deg=0,
-            invert=False,
+            invert=True,
         )
         self.steering.center()
 
