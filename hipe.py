@@ -7,7 +7,7 @@
 
 import time
 
-HIPE_REV = "2026-07-12c"   # Bei JEDER Änderung hochzählen!
+HIPE_REV = "2026-07-13c"   # Bei JEDER Änderung hochzählen!
 print("hipe.py Revision:", HIPE_REV)
 
 from modules.led import LedBlinker
@@ -83,6 +83,15 @@ class hipe:
         # Plausibilitätsgrenze gegen Encoder-Störimpulse (Bürstenrauschen):
         # Messwerte darüber sind Fiktion und werden komplett verworfen.
         self.ODO_MAX_RPM = 1000
+        
+        # #####################################################################
+        # ##  PULS-ODOMETER (ersetzt RPM-Integration): kalibriert 2026-07-13 ##
+        # #####################################################################
+        self.M_PER_PULSE = 0.0026 * 2.2   # Busy-Loop-Undercount empirisch kompensiert
+        # #####################################################################
+        self._enc_pin = _Pin(0, _Pin.IN)   # DEC_A
+        self._enc_last = self._enc_pin.value()
+        self._enc_halfedge = 0
 
         # #####################################################################
         # ##  FAHRPROFIL — Launch-Boost + Cruise. HIER EIGENE TUNING-WERTE   ##
@@ -90,9 +99,9 @@ class hipe:
         # #####################################################################
         self.MAN_BOOST_PCT      = 70     # Anfahr-Boost (%)
         self.MAN_BOOST_MS       = 100    # Boost-Dauer ab Start (ms)
-        self.MAN_SPEED_PCT      = 50     # Cruise (%); wird vom UI-Slider gesetzt
-        self.MAN_SPEED_SLOW_PCT = 40     # Kriechgang (nur drive_dist)
-        self.MAN_SLOW_ZONE_M    = 0.20
+        self.MAN_SPEED_PCT      = 20     # Cruise (%); wird vom UI-Slider gesetzt
+        self.MAN_SPEED_SLOW_PCT = 20     # Kriechgang (nur drive_dist)
+        self.MAN_SLOW_ZONE_M    = 0.0    # Kreichgang aus: Auslauf @20% ~1cm
         # #####################################################################
         self.MAN_TIMEOUT_MS     = 15000
         self.MAN_COAST_MAX_MS   = 2000
@@ -406,6 +415,27 @@ class hipe:
     def reset_distance(self) -> None:
         self._dist_m = 0.0
         self._dist_last_ms = time.ticks_ms()
+        
+    def _poll_encoder(self, ms):
+        """Zählt Encoder-Flanken auf GP0 für ms Millisekunden (Busy-Poll,
+        glitch-immun — IRQ zählt Bürstenfunken ~300x zu viel!). Läuft in
+        der Idle-Zeit jedes Loop-Ticks statt sleep_ms."""
+        if ms <= 0:
+            return
+        pin = self._enc_pin
+        last = self._enc_last
+        edges = 0
+        deadline = time.ticks_add(time.ticks_us(), ms * 1000)
+        while time.ticks_diff(deadline, time.ticks_us()) > 0:
+            v = pin.value()
+            if v != last:
+                edges += 1
+                last = v
+        self._enc_last = last
+        self._enc_halfedge += edges
+        pulses = self._enc_halfedge // 2
+        self._enc_halfedge -= pulses * 2
+        self._dist_m += self._odo_dir * pulses * self.M_PER_PULSE    
 
     def _update_odometry(self, rpm, safe_pct, now) -> None:
         dt_odo = time.ticks_diff(now, self._dist_last_ms)
@@ -692,10 +722,9 @@ class hipe:
                 self._maneuver_cancel("Timeout")
                 return
 
+            # Boost: 70%/100ms — nur Anlaufschwelle überwinden, nicht überschiessen
             if time.ticks_diff(now, self._man_start_ms) < self.MAN_BOOST_MS:
                 pct = self.MAN_BOOST_PCT
-            elif self._man_target_m <= self.MAN_SLOW_ZONE_M:
-                pct = self.MAN_SPEED_PCT
             elif remaining <= self.MAN_SLOW_ZONE_M:
                 pct = self.MAN_SPEED_SLOW_PCT
             else:
@@ -885,8 +914,11 @@ class hipe:
                 print("safety.enforce failed:", e)
                 safe_pct, status = int(self._target_speed), "OK"
 
-            # 6b) Odometrie
-            self._update_odometry(rpm_for_safety, safe_pct, now)
+            # 6b) Odometer-Richtung aus Sollwert (Zählung selbst: siehe Step 8)
+            if safe_pct > 0:
+                self._odo_dir = 1
+            elif safe_pct < 0:
+                self._odo_dir = -1
 
             # 6c) ToF-Kollisionsschutz
             if _TOF_HW and self._tof_sensors:
@@ -931,11 +963,10 @@ class hipe:
             # 8) Takt einhalten
             next_tick = time.ticks_add(next_tick, self.dt_ms)
             delay = time.ticks_diff(next_tick, time.ticks_ms())
-            if delay > 0:
-                time.sleep_ms(delay)
-            else:
-                if delay < -5:
-                    next_tick = time.ticks_ms()
+            # Encoder-Polling GARANTIEREN: auch bei überzogenem Tick
+            # mindestens 3ms zählen, sonst verhungert der Odometer
+            # sobald ein Client verbunden ist (Tick-Überläufe!)
+            self._poll_encoder(delay if delay > 2 else 3)
 
             # 9) LED-Muster
             has_client = False

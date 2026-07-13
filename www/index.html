@@ -98,11 +98,14 @@
           <button class="btn primary" id="holdBtn" oncontextmenu="return false">HOLD TO DRIVE</button>
         </div>
 
-        <p class="sub-title">Inch forward</p>
+        <p class="sub-title">Inch / Drive distance</p>
         <div class="form-row">
-          <label for="inchMs">Duration (ms)</label>
+          <label for="inchMs">Inch (ms)</label>
           <input type="number" id="inchMs" min="30" max="500" step="10" value="80">
-          <button class="btn" onclick="cmdInch()">Inch (ball approach)</button>
+          <button class="btn" onclick="cmdInch()">Inch</button>
+          <label for="distCm" style="min-width:auto;">Dist (cm)</label>
+          <input type="number" id="distCm" min="-200" max="200" step="5" value="50">
+          <button class="btn primary" onclick="cmdDist()">Drive dist</button>
         </div>
 
         <p class="sub-title">Steering angle</p>
@@ -296,7 +299,7 @@
       const ms = parseInt(document.getElementById('inchMs').value);
       sendAux('inch', isNaN(ms) ? 80 : ms);
     }
-
+    
     // ================== STEERING SLIDER ==================
     const STEER_SNAPS = [-90, -45, -30, 0, 30, 45, 90];
     function snapToNearest(val) {
@@ -518,7 +521,10 @@
     }, 100);
 
     function sendAux(type, data) {
-      fetch(`/aux?type=${type}&data=${data}`, {cache:'no-store'}).catch(e => console.log(e));
+      const c = new AbortController();
+      setTimeout(() => c.abort(), 2000); //self-cancellation of queued requsets
+      fetch(`/aux?type=${type}&data=${data}`, {cache:'no-store', signal: c.signal})
+        .catch(() => {});
     }
 
     function sendTelemetry() {
