@@ -7,7 +7,7 @@
 
 import time
 
-HIPE_REV = "2026-07-13c"   # Bei JEDER Änderung hochzählen!
+HIPE_REV = "2026-07-14a"   # Bei JEDER Änderung hochzählen!
 print("hipe.py Revision:", HIPE_REV)
 
 from modules.led import LedBlinker
@@ -165,6 +165,23 @@ class hipe:
         self.ENV_PERIOD_MS = 2500
         self.TEMP_OFFSET_C = -2.0     # konstante Korrektur (empirisch bestätigt)
         self.IRR_RESPONSIVITY = 150   # Hz/(uW/cm2), Clear, 20%-Skalierung
+        # #####################################################################
+        # ##  FARBKLASSIFIKATION — Zentroiden aus 3 Kalibriersessions        ##
+        # #####################################################################
+        self.COLOR_REFS = {
+            "red":    (0.54, 0.22, 0.26),
+            "yellow": (0.50, 0.31, 0.22),
+            "green":  (0.31, 0.35, 0.31),
+            "blue":   (0.30, 0.27, 0.40),
+            "white":  (0.47, 0.41, 0.47),
+            "black":  (0.37, 0.29, 0.33),
+        }
+        self.COLOR_MAX_DIST = 0.06
+        # #####################################################################
+        self._ground_color = "unknown"
+        # TCS3200 Filterwahl: (S2,S3)
+        self._tcs_filters = {"red": (0, 0), "blue": (0, 1),
+                             "clear": (1, 0), "green": (1, 1)}
         self._env_last_ms = 0
         self._temp_c = None           # int °C
         self._irr = None              # int uW/cm2
@@ -220,9 +237,11 @@ class hipe:
         # #####################################################################
         # ##  KOLLISIONSSCHUTZ — ToF-Schwellen (mm, korrigierte Werte)       ##
         # #####################################################################
-        self.TOF_STOP_FRONT_MM   = 225
-        self.TOF_STOP_SIDE_MM    = 100
+        self.TOF_STOP_FRONT_MM   = 250
+        self.TOF_STOP_SIDE_MM    = 125
         self.TOF_RELEASE_HYST_MM = 30
+        self._tof_override = False   # False = Schutz AKTIV (Normalzustand);
+                                     # True nur via UI-Toggle (Notfall)
         # #####################################################################
 
         self._tof_corr = {
@@ -248,6 +267,7 @@ class hipe:
         if SENIOR_AVAILABLE:
             try:
                 self.senior = SeniorProject()
+                self.senior.hipe = self   # Zugriff auf ToF-Mediane & Farbsensor
                 print("Senior-Projekt erfolgreich geladen.")
             except Exception as e:
                 print("Fehler im Senior-Projekt Init:", e)
@@ -378,9 +398,32 @@ class hipe:
         elif type == "dist_reset":
             self.reset_distance()
             print("-> Odometer auf 0 gesetzt.")
+            
+        # --- K: ToF-Schutz an/aus (UI-Toggle; Schutz ist per Boot-Default AN)
+        elif type == "tof_override":
+            self._tof_override = (data == "off")
+            print("-> ToF-Schutz:", "AUS (Override!)" if self._tof_override else "AN")
+
+        # --- K2: ToF-Schwellwerte aus dem UI (data = "front_mm,side_mm")
+        elif type == "tof_config":
+            try:
+                parts = data.split(",")
+                self.TOF_STOP_FRONT_MM = int(float(parts[0]))
+                self.TOF_STOP_SIDE_MM  = int(float(parts[1]))
+                print("-> ToF-Schwellen: Front %dmm, Seite %dmm"
+                      % (self.TOF_STOP_FRONT_MM, self.TOF_STOP_SIDE_MM))
+            except (ValueError, IndexError):
+                print("-> tof_config: ungültig:", data)
+
+        # --- L: BALL-RETRY: Inch + Jaw sofort nachschliessen (ohne Statuswechsel)
+        elif type == "ball_retry":
+            if self.senior:
+                self._inch_until = time.ticks_add(time.ticks_ms(), 100)
+                self.senior.ball_retry_pending = time.ticks_add(time.ticks_ms(), 150)
+                print("-> Ball-Retry: Inch 100ms + Jaw-Nachschluss.")
 
         # --- C: GREIFER, LOCK & TRIGGER ---
-        elif type in ("arm", "trigger", "jaw", "lock"):
+        elif type in ("arm", "trigger", "jaw", "lock", "nav_side"):
             self._target_speed = 0.0
             self._hold_until = 0
             try:
@@ -518,6 +561,56 @@ class hipe:
             return int(round(freq / self.IRR_RESPONSIVITY))
         except Exception:
             return None
+        
+    def _tcs_freq(self, s2v, s3v, periods=10, timeout_us=5000):
+        """Eine Filterfrequenz messen (IRQ-geschützt wie _read_irr_int)."""
+        try:
+            self._tcs_out = _Pin(16, _Pin.IN)
+            self._tcs_s2.value(s2v)
+            self._tcs_s3.value(s3v)
+            time.sleep_ms(20)   # Filter-Settle
+            out = self._tcs_out
+            import machine
+            irq_state = machine.disable_irq()
+            try:
+                deadline = time.ticks_add(time.ticks_us(), timeout_us)
+                def wait(level):
+                    while out.value() != level:
+                        if time.ticks_diff(deadline, time.ticks_us()) <= 0:
+                            return False
+                    return True
+                if not (wait(0) and wait(1)):
+                    return None
+                t0 = time.ticks_us()
+                for _ in range(periods):
+                    if not (wait(0) and wait(1)):
+                        return None
+                dt = time.ticks_diff(time.ticks_us(), t0)
+            finally:
+                machine.enable_irq(irq_state)
+            return 1_000_000 * periods / dt if dt > 0 else None
+        except Exception:
+            return None
+
+    def read_color_name(self):
+        """Voller RGBC-Durchgang (~100ms, blockierend!) -> Farbname.
+        Nur im Stand aufrufen. Aktualisiert self._ground_color."""
+        f = {}
+        for name, (a, b) in self._tcs_filters.items():
+            f[name] = self._tcs_freq(a, b)
+        if not f["clear"] or not f["red"] or not f["green"] or not f["blue"]:
+            self._ground_color = "unknown"
+            return "unknown"
+        rr = f["red"] / f["clear"]
+        gr = f["green"] / f["clear"]
+        br = f["blue"] / f["clear"]
+        best, best_d2 = "unknown", self.COLOR_MAX_DIST ** 2
+        for cname, (cr, cg, cb) in self.COLOR_REFS.items():
+            d2 = (rr - cr) ** 2 + (gr - cg) ** 2 + (br - cb) ** 2
+            if d2 < best_d2:
+                best, best_d2 = cname, d2
+        self._ground_color = best
+        return best
 
     # -------------------------------------------------------------------------
     # KOLLISIONSSCHUTZ (ToF, Continuous-Modus, nicht-blockierend)
@@ -775,6 +868,7 @@ class hipe:
             },
             "temp": self._temp_c,     # int °C (alle ~2.5s aktualisiert)
             "irr": self._irr,         # int uW/cm2 (alle ~2.5s aktualisiert)
+            "ground_color": self._ground_color,
             "ts": time.ticks_ms(),
         }
         if self.deathmatch_enabled:
@@ -841,6 +935,16 @@ class hipe:
                 else:
                     self._inch_until = 0
                     self._target_speed = 0.0
+                    
+            # 2c2) Ball-Retry: verzögerter Jaw-Nachschluss nach Inch
+            if self.senior and getattr(self.senior, "ball_retry_pending", 0):
+                if time.ticks_diff(self.senior.ball_retry_pending, now) <= 0:
+                    self.senior.ball_retry_pending = 0
+                    self._target_speed = 0.0
+                    try:
+                        self.senior.jaw_reclose()
+                    except Exception as e:
+                        print("jaw_reclose fehlgeschlagen:", e)
 
             # 2d) HOLD-DRIVE: fahren solange Heartbeats frisch sind
             if self._hold_until:
@@ -921,7 +1025,7 @@ class hipe:
                 self._odo_dir = -1
 
             # 6c) ToF-Kollisionsschutz
-            if _TOF_HW and self._tof_sensors:
+            if _TOF_HW and self._tof_sensors and not self._tof_override:
                 self._tof_poll()
                 self._tof_check_proximity()
                 if self._tof_blocked:
@@ -934,7 +1038,7 @@ class hipe:
                         self.mode = "MANUAL"
                         self._target_speed = 0.0
                         print("[ToF] AUTO -> MANUAL (Kollisionsschutz).")
-                    if safe_pct > 0:
+                    if safe_pct > 0 and not self._inch_until:
                         safe_pct = 0
                         self._safe_speed = 0
 

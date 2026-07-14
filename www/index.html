@@ -103,9 +103,6 @@
           <label for="inchMs">Inch (ms)</label>
           <input type="number" id="inchMs" min="30" max="500" step="10" value="80">
           <button class="btn" onclick="cmdInch()">Inch</button>
-          <label for="distCm" style="min-width:auto;">Dist (cm)</label>
-          <input type="number" id="distCm" min="-200" max="200" step="5" value="50">
-          <button class="btn primary" onclick="cmdDist()">Drive dist</button>
         </div>
 
         <p class="sub-title">Steering angle</p>
@@ -133,10 +130,18 @@
         <div class="form-row">
           <button class="btn" id="autoBtn" onclick="toggleAuto()">Enable automatic navigation</button>
         </div>
+        <div class="form-row">
+          <button class="btn" id="tofBtn" onclick="toggleTof()">Disable ToF protection</button>
+          <button class="btn" onclick="sendAux('ball_retry','1')">Ball retry</button>
+          <button class="btn" id="sideBtn" onclick="toggleSide()">Wall: RIGHT (outbound)</button>
+        </div>
+        <div class="form-row">
+          <label for="tofFrontMm">Stop front (mm)</label>
+          <input type="number" id="tofFrontMm" min="50" max="400" step="10" value="250">
+          <label for="tofSideMm" style="min-width:auto;">side (mm)</label>
+          <input type="number" id="tofSideMm" min="50" max="400" step="10" value="125">
+        </div>
         <div class="tele">
-          <div class="kv"><div class="k">ToF front (mm)</div><div class="v" id="tofFront">–</div></div>
-          <div class="kv"><div class="k">ToF left (mm)</div><div class="v" id="tofLeft">–</div></div>
-          <div class="kv"><div class="k">ToF right (mm)</div><div class="v" id="tofRight">–</div></div>
           <div class="kv"><div class="k">Ground color</div><div class="v"><span class="color-swatch" id="groundSwatch"></span><span id="groundColor">–</span></div></div>
           <div class="kv"><div class="k">Navigation mode</div><div class="v" id="navMode">MANUAL</div></div>
         </div>
@@ -181,8 +186,8 @@
 
   <div class="statusbar">
     <div class="kv"><div class="k">ToF F (mm)</div><div class="v" id="sbTofF">–</div></div>
-    <div class="kv"><div class="k">RPM</div><div class="v" id="rpm">–</div></div>
-    <div class="kv"><div class="k">Target Steer</div><div class="v" id="tSteer">0</div></div>
+    <div class="kv"><div class="k">ToF L (mm)</div><div class="v" id="sbTofL">–</div></div>
+    <div class="kv"><div class="k">ToF R (mm)</div><div class="v" id="sbTofR">–</div></div>
     <div class="kv"><div class="k">Output Speed</div><div class="v" id="oSpeed">0</div></div>
     <div class="kv"><div class="k">Safety</div><div class="v" id="safety">–</div></div>
   </div>
@@ -354,6 +359,28 @@
       btn.classList.toggle('toggled', autoMode);
       document.getElementById('navMode').textContent = autoMode ? 'AUTO' : 'MANUAL';
     }
+    let tofOn = true;
+    function sendTofConfig() {
+      const f = parseInt(document.getElementById('tofFrontMm').value) || 250;
+      const s = parseInt(document.getElementById('tofSideMm').value) || 125;
+      sendAux('tof_config', f + ',' + s);
+    }
+    function toggleTof() {
+      tofOn = !tofOn;
+      const btn = document.getElementById('tofBtn');
+      btn.textContent = tofOn ? 'Disable ToF protection' : 'ENABLE ToF protection!';
+      btn.classList.toggle('rec', !tofOn);
+      if (tofOn) sendTofConfig();          // Schwellen beim Einschalten übernehmen
+      sendAux('tof_override', tofOn ? 'on' : 'off');
+    }
+    
+    let wallSide = 'right';
+    function toggleSide() {
+      wallSide = (wallSide === 'right') ? 'left' : 'right';
+      document.getElementById('sideBtn').textContent =
+        wallSide === 'right' ? 'Wall: RIGHT (outbound)' : 'Wall: LEFT (return)';
+      sendAux('nav_side', wallSide);
+    }
 
     // ================== KILL ==================
     function killSwitch() {
@@ -494,14 +521,14 @@
 
     // ================== UI REFERENCES ==================
     const ui = {
-      rpm: document.getElementById('rpm'),
       safe: document.getElementById('safety'),
       oSpeed: document.getElementById('oSpeed'),
-      tSteer: document.getElementById('tSteer'),
       tofFront: document.getElementById('tofFront'),
       tofLeft: document.getElementById('tofLeft'),
       tofRight: document.getElementById('tofRight'),
       sbTofF: document.getElementById('sbTofF'),
+      sbTofL: document.getElementById('sbTofL'),
+      sbTofR: document.getElementById('sbTofR'),
       groundColor: document.getElementById('groundColor'),
       groundSwatch: document.getElementById('groundSwatch'),
       navMode: document.getElementById('navMode'),
@@ -534,10 +561,8 @@
         .then(r => r.json())
         .then(d => {
           setNet(true);
-          ui.rpm.textContent = d.rpm ?? 0;
           ui.oSpeed.textContent = d.speed_safe ?? 0;
           ui.oSpeed.className = (Number(d.speed_safe ?? 0) === Number(d.speed_target ?? 0)) ? 'v ok' : 'v mid';
-          if (typeof d.steer_target === 'number') ui.tSteer.textContent = d.steer_target;
 
           const safetyText = d.safety ?? '-';
           const isDead = safetyText === 'DEAD';
@@ -562,10 +587,9 @@
           }
 
           if (d.tof) {
-            ui.tofFront.textContent = (typeof d.tof.front === 'number') ? d.tof.front : '–';
-            ui.tofLeft.textContent  = (typeof d.tof.left  === 'number') ? d.tof.left  : '–';
-            ui.tofRight.textContent = (typeof d.tof.right === 'number') ? d.tof.right : '–';
-            ui.sbTofF.textContent   = (typeof d.tof.front === 'number') ? d.tof.front : '–';
+            ui.sbTofF.textContent = (typeof d.tof.front === 'number') ? d.tof.front : '–';
+            ui.sbTofL.textContent = (typeof d.tof.left  === 'number') ? d.tof.left  : '–';
+            ui.sbTofR.textContent = (typeof d.tof.right === 'number') ? d.tof.right : '–';
           }
           if (typeof d.ground_color === 'string') {
             ui.groundColor.textContent = d.ground_color;

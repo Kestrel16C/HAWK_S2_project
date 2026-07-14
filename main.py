@@ -19,7 +19,7 @@ if __name__ == "__main__":
         buf = io.StringIO()
         sys.print_exception(e, buf)
         tb = buf.getvalue()
-        print(tb)                      # sichtbar, falls doch USB dran ist
+        print(tb) # sichtbar, falls doch USB dran ist
         try:
             with open("/crash.log", "w") as f:
                 f.write(tb)
