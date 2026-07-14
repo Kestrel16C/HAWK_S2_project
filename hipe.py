@@ -242,6 +242,10 @@ class hipe:
         self.TOF_RELEASE_HYST_MM = 30
         self._tof_override = False   # False = Schutz AKTIV (Normalzustand);
                                      # True nur via UI-Toggle (Notfall)
+        # Im AUTO-Modus gelten NIEDRIGERE Notfall-Schwellen — die Ausweich-
+        # logik des Autopiloten arbeitet OBERHALB davon (330/200):
+        self.TOF_NAV_FLOOR_FRONT_MM = 120
+        self.TOF_NAV_FLOOR_SIDE_MM  = 90
         # #####################################################################
 
         self._tof_corr = {
@@ -724,9 +728,11 @@ class hipe:
         margin = self.TOF_RELEASE_HYST_MM if self._tof_blocked else 0
 
         blocked = False
-        for name, limit in (("left", self.TOF_STOP_SIDE_MM),
-                            ("right", self.TOF_STOP_SIDE_MM),
-                            ("front", self.TOF_STOP_FRONT_MM)):
+        if self.mode == "AUTO":
+            lim_f, lim_s = self.TOF_NAV_FLOOR_FRONT_MM, self.TOF_NAV_FLOOR_SIDE_MM
+        else:
+            lim_f, lim_s = self.TOF_STOP_FRONT_MM, self.TOF_STOP_SIDE_MM
+        for name, limit in (("left", lim_s), ("right", lim_s), ("front", lim_f)):
             if name == "front" and jaw_open:
                 continue
             val = self._tof_vals.get(name)
