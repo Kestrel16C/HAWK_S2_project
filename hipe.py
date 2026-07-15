@@ -7,7 +7,7 @@
 
 import time
 
-HIPE_REV = "2026-07-14a"   # Bei JEDER Änderung hochzählen!
+HIPE_REV = "2026-07-14b"   # Bei JEDER Änderung hochzählen!
 print("hipe.py Revision:", HIPE_REV)
 
 from modules.led import LedBlinker
@@ -113,6 +113,7 @@ class hipe:
         self.INCH_MS_DEFAULT = 80      # Fallback, falls UI keinen Wert sendet
         self.INCH_MS_MIN     = 30
         self.INCH_MS_MAX     = 500
+        self._inch_pct_active = self.INCH_PCT
         # #####################################################################
         self._inch_until = 0
 
@@ -381,12 +382,15 @@ class hipe:
                 print("-> inch: Fahrbetrieb aktiv, ignoriert.")
                 return
             try:
-                ms = int(float(data))
-            except (ValueError, TypeError):
-                ms = self.INCH_MS_DEFAULT
+                parts = str(data).split(",")
+                ms = int(float(parts[0]))
+                pct = int(float(parts[1])) if len(parts) > 1 else self.INCH_PCT
+            except (ValueError, TypeError, IndexError):
+                ms, pct = self.INCH_MS_DEFAULT, self.INCH_PCT
             ms = max(self.INCH_MS_MIN, min(self.INCH_MS_MAX, ms))
+            self._inch_pct_active = max(10, min(100, pct))
             self._inch_until = time.ticks_add(time.ticks_ms(), ms)
-            print("-> Inch: %d%% für %d ms." % (self.INCH_PCT, ms))
+            print("-> Inch: %d%% für %d ms." % (self._inch_pct_active, ms))
 
         # --- F: KILL-SWITCH ---
         elif type == "kill":
@@ -427,7 +431,7 @@ class hipe:
                 print("-> Ball-Retry: Inch 100ms + Jaw-Nachschluss.")
 
         # --- C: GREIFER, LOCK & TRIGGER ---
-        elif type in ("arm", "trigger", "jaw", "lock", "nav_side"):
+        elif type in ("arm", "trigger", "jaw", "lock", "nav_side", "nav_power"):
             self._target_speed = 0.0
             self._hold_until = 0
             try:
@@ -936,7 +940,7 @@ class hipe:
             # 2c) Inch-Impuls
             if self._inch_until:
                 if time.ticks_diff(self._inch_until, now) > 0:
-                    self._target_speed = float(self.INCH_PCT)
+                    self._target_speed = float(self._inch_pct_active)
                     self._last_heartbeat = now
                 else:
                     self._inch_until = 0

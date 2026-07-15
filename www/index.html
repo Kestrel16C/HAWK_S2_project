@@ -102,6 +102,8 @@
         <div class="form-row">
           <label for="inchMs">Inch (ms)</label>
           <input type="number" id="inchMs" min="30" max="500" step="10" value="80">
+          <label for="inchPct" style="min-width:auto;">Power (%)</label>
+          <input type="number" id="inchPct" min="10" max="100" step="5" value="100">
           <button class="btn" onclick="cmdInch()">Inch</button>
         </div>
 
@@ -109,7 +111,7 @@
         <div style="padding:0 4px;">
           <input type="range" id="steerSlider" min="-90" max="90" value="0" style="width:100%;">
           <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:2px;">
-            <span>-90°</span><span>-45°</span><span>-30°</span><span>0°</span><span>30°</span><span>45°</span><span>90°</span>
+            <span>-90°</span><span>-45°</span><span>-30°</span><span>-5°</span><span>0°</span><span>5°</span><span>30°</span><span>45°</span><span>90°</span>
           </div>
           <div style="text-align:center; font-size:18px; font-weight:bold; margin-top:4px;" id="steerDeg">0°</div>
         </div>
@@ -140,6 +142,11 @@
           <input type="number" id="tofFrontMm" min="50" max="400" step="10" value="250">
           <label for="tofSideMm" style="min-width:auto;">side (mm)</label>
           <input type="number" id="tofSideMm" min="50" max="400" step="10" value="125">
+        </div>
+        <div class="form-row">
+          <label for="navPct">Auto drive power (%)</label>
+          <input type="number" id="navPct" min="10" max="50" step="5" value="30"
+                 onchange="sendAux('nav_power', this.value)">
         </div>
         <div class="tele">
           <div class="kv"><div class="k">Ground color</div><div class="v"><span class="color-swatch" id="groundSwatch"></span><span id="groundColor">–</span></div></div>
@@ -301,12 +308,13 @@
     })();
 
     function cmdInch() {
-      const ms = parseInt(document.getElementById('inchMs').value);
-      sendAux('inch', isNaN(ms) ? 80 : ms);
+      const ms = parseInt(document.getElementById('inchMs').value) || 80;
+      const pct = parseInt(document.getElementById('inchPct').value) || 100;
+      sendAux('inch', ms + ',' + pct);
     }
     
     // ================== STEERING SLIDER ==================
-    const STEER_SNAPS = [-90, -45, -30, 0, 30, 45, 90];
+    const STEER_SNAPS = [-90, -45, -30, -5, 0, 5, 30, 45, 90];
     function snapToNearest(val) {
       let best = STEER_SNAPS[0];
       for (let i = 1; i < STEER_SNAPS.length; i++) {

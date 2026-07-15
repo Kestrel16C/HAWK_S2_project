@@ -2,7 +2,7 @@
 from machine import Pin, PWM
 import time
 
-SENIOR_REV = "2026-07-14a"
+SENIOR_REV = "2026-07-14b"
 print("senior.py Revision:", SENIOR_REV)
 
 # #############################################################################
@@ -20,25 +20,23 @@ LOCK_ENGAGE_MS   = 425
 LOCK_RELEASE_PCT = +45
 LOCK_RELEASE_MS  = 400
 # #############################################################################
-
+# ##  AUTOPILOT — Korridor-Navigation (nur Seiten-ToF; Front = Notbremse)   ##
+# ##  SEEK: geradeaus bis beide Seiten < Korridor. CRUISE: parallel fahren  ##
+# ##  über Delta-Vergleich alter/neuer Seitenwerte. Sprung einer Seite      ##
+# ##  nach oben = Abzweig -> zeitbegrenzte 90°-Kurve, dann wieder SEEK.     ##
+# ##  Lenkung wird in JEDER Messphase im Stand zentriert -> keine Kreise.   ##
 # #############################################################################
-# ##  AUTOPILOT — Bounce-Navigation (alle drei ToF, Fahr-/Messzyklen)        ##
-# ##  Prinzip: n/a = freie Richtung. Nur VON Hindernissen weg lenken.        ##
-# #############################################################################
-NAV_DRIVE_PCT   = 33     # Leistung Fahrzyklus (%)
-NAV_DRIVE_MS    = 1000   # Dauer Fahrzyklus
-NAV_TURN_MS     = 800    # Dauer Kurvenzyklus
-NAV_SETTLE_MS   = 400    # Ausrollen vor Messung
-NAV_FRONT_TURN  = 320    # Front darunter -> Kurve zur offeneren Seite
-NAV_FRONT_BACK  = 200    # Front darunter -> zurücksetzen
-NAV_SIDE_MIN    = 200    # Seite darunter -> weglenken
-NAV_SIDE_BACK   = 130    # Seite darunter -> zurücksetzen
-NAV_BACK_MS     = 800    # Dauer Rückwärtszyklus
-NAV_BACK_PCT    = 35
-NAV_STEER_TURN  = 30     # Lenk-% Kurve
-NAV_STEER_NUDGE = 5     # Lenk-% Seitenkorrektur
-NAV_DRIFT_MM    = 30     # Annäherung/Zyklus an nächster Wand -> vorhalten
-NAV_FAR         = 9999   # Ersatzwert für n/a (= sicher/frei)
+NAV_DRIVE_MS     = 1000   # Dauer Fahrzyklus
+NAV_SETTLE_MS    = 800    # Stillstand: Mediane auffrischen + Servo zentrieren
+NAV_CORRIDOR_MM  = 400    # beide Seiten darunter = im Korridor
+NAV_DRIFT_MM     = 25     # Annäherung/Zyklus -> Gegenlenken (ein Zyklus)
+NAV_ALIGN_STEER  = 12     # Lenk-% Parallel-Korrektur (klein!)
+NAV_SIDE_MIN     = 180    # absolute Nähe-Grenze -> Gegenlenken
+NAV_JUMP_MM      = 250    # Seiten-Sprung nach oben = Abzweig erkannt
+NAV_TURN_STEER   = 60     # Lenk-% während der Kurve
+NAV_TURN_MS      = 1500   # Kurvendauer (Lenkung wird DANACH zentriert)
+NAV_TURN_PCT     = 30     # Antrieb während der Kurve
+NAV_FAR          = 9999
 # #############################################################################
 
 _FREQ_HZ   = 50
@@ -99,7 +97,8 @@ class SeniorProject:
         self._nav_state = "MEASURE"
         self._nav_t0 = 0
         self._nav_steer = 0.0
-        self._nav_prev = {}
+        self._nav_prev = None        # (L, R) der letzten gültigen Messung
+        self.nav_drive_pct = 30      # UI-einstellbar via nav_power
 
     # -------------------------------------------------------------------------
     # TEIL A: MANUELLE STEUERUNG (Buttons aus dem Web-UI via /aux)
@@ -124,6 +123,13 @@ class SeniorProject:
                 print("[lock] ENGAGE pct=%+d for %dms" % (LOCK_ENGAGE_PCT, LOCK_ENGAGE_MS))
                 self.lock.run(LOCK_ENGAGE_PCT, LOCK_ENGAGE_MS)
                 self.lock_engaged = True
+                
+        elif command == "nav_power":
+            try:
+                self.nav_drive_pct = max(10, min(50, int(float(data))))
+                print("[NAV] Fahrleistung:", self.nav_drive_pct)
+            except (ValueError, TypeError):
+                pass
 
     def jaw_reclose(self):
         """Jaw-Nachschluss OHNE Statuswechsel (Ball-Retry)."""
@@ -140,52 +146,53 @@ class SeniorProject:
             return 0, 0
         now = time.ticks_ms()
 
-        # --- laufende Aktionsphase zu Ende fahren ---
-        if self._nav_state in ("DRIVE", "TURN", "BACK"):
-            dur = {"DRIVE": NAV_DRIVE_MS, "TURN": NAV_TURN_MS,
-                   "BACK": NAV_BACK_MS}[self._nav_state]
+        # --- Aktionsphase läuft ---
+        if self._nav_state in ("DRIVE", "TURN"):
+            dur = NAV_TURN_MS if self._nav_state == "TURN" else NAV_DRIVE_MS
+            pct = NAV_TURN_PCT if self._nav_state == "TURN" else self.nav_drive_pct
             if time.ticks_diff(now, self._nav_t0) < dur:
-                spd = -NAV_BACK_PCT if self._nav_state == "BACK" else NAV_DRIVE_PCT
-                return spd, self._nav_steer
+                return pct, self._nav_steer
+            if self._nav_state == "TURN":
+                self._nav_prev = None      # alte Seitenwerte nach Kurve ungültig
             self._nav_state = "MEASURE"
             self._nav_t0 = now
-            return 0, self._nav_steer
+            return 0, 0.0                  # Stillstand: Servo zentriert JETZT
 
-        # --- MEASURE: ausrollen, dann entscheiden ---
+        # --- MEASURE: stehen, zentrieren, Mediane auffrischen ---
         if time.ticks_diff(now, self._nav_t0) < NAV_SETTLE_MS:
-            return 0, self._nav_steer
+            return 0, 0.0
 
         v = self.hipe._tof_vals
-        F = v["front"] if v["front"] is not None else NAV_FAR
         L = v["left"]  if v["left"]  is not None else NAV_FAR
         R = v["right"] if v["right"] is not None else NAV_FAR
-        open_sgn = 1 if R > L else -1   # +1 = rechts ist offener
 
-        # 1) Kritisch nah -> gerade zurücksetzen
-        if F < NAV_FRONT_BACK or L < NAV_SIDE_BACK or R < NAV_SIDE_BACK:
-            action, steer = "BACK", 0.0
-        # 2) Front zu -> Kurve zur offeneren Seite
-        elif F < NAV_FRONT_TURN:
-            action, steer = "TURN", open_sgn * NAV_STEER_TURN
-        # 3) Seite zu nah -> weglenken
-        elif L < NAV_SIDE_MIN:
-            action, steer = "DRIVE", NAV_STEER_NUDGE
-        elif R < NAV_SIDE_MIN:
-            action, steer = "DRIVE", -NAV_STEER_NUDGE
-        else:
-            # 4) frei: geradeaus; Parallelitäts-Check — driftet die nähere
-            #    Wand heran, früh gegenlenken
-            steer = 0.0
-            near_d, near_sgn = (L, 1) if L < R else (R, -1)
-            prev = self._nav_prev.get("L" if near_sgn > 0 else "R", NAV_FAR)
-            if near_d < 2 * NAV_SIDE_MIN and prev - near_d > NAV_DRIFT_MM:
-                steer = near_sgn * NAV_STEER_NUDGE
-            action = "DRIVE"
+        steer = 0.0
+        action = "DRIVE"
+        in_corridor = (L < NAV_CORRIDOR_MM and R < NAV_CORRIDOR_MM)
 
-        self._nav_prev = {"L": L, "R": R}
+        if self._nav_prev is not None:
+            pL, pR = self._nav_prev
+            was_corridor = (pL < NAV_CORRIDOR_MM and pR < NAV_CORRIDOR_MM)
+
+            # Abzweig: eine Seite springt aus dem Korridor nach oben
+            if was_corridor and (L - pL) > NAV_JUMP_MM and L >= NAV_CORRIDOR_MM:
+                action, steer = "TURN", -NAV_TURN_STEER     # links öffnet -> links
+            elif was_corridor and (R - pR) > NAV_JUMP_MM and R >= NAV_CORRIDOR_MM:
+                action, steer = "TURN", NAV_TURN_STEER      # rechts öffnet -> rechts
+            elif in_corridor:
+                # Parallel-Korrektur: Annäherungs-Delta ODER absolute Nähe.
+                # Korrektur gilt EINEN Fahrzyklus, danach wieder zentriert.
+                if L < NAV_SIDE_MIN or (pL - L) > NAV_DRIFT_MM:
+                    steer = NAV_ALIGN_STEER                 # weg von links
+                elif R < NAV_SIDE_MIN or (pR - R) > NAV_DRIFT_MM:
+                    steer = -NAV_ALIGN_STEER                # weg von rechts
+            # sonst: SEEK -> geradeaus (steer 0)
+
+        self._nav_prev = (L, R)
         self._nav_steer = float(steer)
         self._nav_state = action
         self._nav_t0 = now
-        print("[NAV] F=%s L=%s R=%s -> %s steer=%.0f" % (F, L, R, action, steer))
-        return (-NAV_BACK_PCT if action == "BACK" else NAV_DRIVE_PCT,
+        print("[NAV] L=%s R=%s korridor=%s -> %s steer=%.0f"
+              % (L, R, in_corridor, action, steer))
+        return (NAV_TURN_PCT if action == "TURN" else self.nav_drive_pct,
                 self._nav_steer)
